@@ -41,7 +41,9 @@ function vegPlace() {
   const g = 5.6, ng = Math.floor(2 * half / g);
   for (let gz = 0; gz < ng; gz++) for (let gx = 0; gx < ng; gx++) {
     const x = V.x0 + (gx + rnd()) * g, z = V.z0 + (gz + rnd()) * g, r1 = rnd(), r2 = rnd(), r3 = rnd(), r4 = rnd(), r5 = rnd();
-    const dc = Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > half - 30) continue;
+    const dr = Math.hypot(x - TRK.cx, z - TRK.cz); if (dr > half - 30) continue;
+    // no mapa grande a mata densa acompanha a pista (distância ao eixo), e não o centro do circuito
+    let dc = dr; if (TRK.map) { const td = trackFarDist(x, z); dc = td > 1e8 ? 1500 : 330 + td; }
     const far = smooth(600, 1450, dc); if (r1 > lerp(0.92, 0.36, far)) continue;
     const f = forestAt(x, z); if (f < 0.03 || r2 > f * 1.15) continue;
     const pn = vnoise(x * 0.017 + 5.1, z * 0.017 - 2.3), edge = 1 - smooth(0.35, 0.9, f);
@@ -58,8 +60,8 @@ function vegPlace() {
   const gb = 3.3, nb = Math.floor(2 * half / gb);
   for (let gz = 0; gz < nb; gz++) for (let gx = 0; gx < nb; gx++) {
     const x = V.x0 + (gx + rnd()) * gb, z = V.z0 + (gz + rnd()) * gb, r1 = rnd(), r2 = rnd(), r3 = rnd();
-    const dc = Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > 780) continue;
     const td = trackFarDist(x, z);
+    const dc = TRK.map ? (td > 1e8 ? 1500 : 330 + td) : Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > 780) continue;
     let p;
     if (td < 60) {
       trackLocate(x, z, -1, loc0); const d = loc0[1], ad = Math.abs(d), bar = trkAt(d < 0 ? TRK.barL : TRK.barR, loc0[2], loc0[3]);

@@ -8,6 +8,31 @@ São duas versões do mesmo jogo, feitas por dois modelos de IA a partir do mesm
 
 O projeto nasceu num vídeo do canal [ViktorKav](https://www.youtube.com/@vkav) sobre como escrever um pedido para a IA. O material de apoio do vídeo está em [viktorkav.com.br/apoio/uno-com-escada](https://viktorkav.com.br/apoio/uno-com-escada/).
 
+## O que este fork acrescenta
+
+Este repositório é um fork de [viktorkav/uno-com-escada](https://github.com/viktorkav/uno-com-escada). Tudo abaixo foi acrescentado à **versão do Fable** (`fable/`); a versão do Opus está como no original. Para jogar com as mudanças: **[murilogoedert.github.io/cacete-corca](https://murilogoedert.github.io/cacete-corca/)**.
+
+| Chevette SL 1987 | Câmera do piloto |
+|---|---|
+| ![Chevette vermelho visto de trás, no grid](.github/screenshots/chevette-traseira.jpg) | ![Vista de dentro do Chevette, atrás do volante](.github/screenshots/chevette-piloto.jpg) |
+| ![Chevette visto de frente](.github/screenshots/chevette-frente.jpg) | ![Uno voando sobre a mata](.github/screenshots/carro-voador.jpg) |
+
+![Spa-Francorchamps em tamanho real, vista aérea](.github/screenshots/spa-aereo.jpg)
+
+1. **Segundo carro: Chevrolet Chevette SL 1987**, vermelho, modelado sobre a mesma pele paramétrica do Uno: três volumes, para-choques pretos com filete, friso lateral, lanternas de três faixas, grade de ventilação na coluna C, rodas de aço, placa amarela. A tecla `Y` (controle: `LB`) troca de carro no lugar, com o carro andando.
+2. **Tração traseira** no Chevette: o torque vai para as rodas de trás, que patinam e perdem aderência lateral na aceleração. Cerca de 11% mais torque que o Uno, 4 marchas, mais peso atrás.
+3. **Tração dosada em curva**, ajustável com o jogo rodando: `↑` e `↓` mudam quanto da aderência traseira o motor pode usar em curva (o valor aparece na tela). As setas `↑` `↓` deixaram de acelerar e frear; isso fica em `W` e `S`.
+4. **Distribuição de freio pela carga**: no Chevette cada roda freia na proporção do peso que tem naquele instante, e a traseira não trava na entrada da curva.
+5. **Carro voador** (`Backspace`), à moda do GTA San Andreas: acima de ~36 km/h, `↓` tira o carro do chão; no ar `↓` sobe, `↑` desce e `A`/`D` viram inclinando.
+6. **Segundo mapa: Spa-Francorchamps em tamanho real** (7 km), com o traçado tirado do mapa oficial e o relevo do mapa de elevação (470 m em Les Combes, 373 m em Paul Frère). A tecla `P` troca de mapa recarregando a página. Guard-rails, zebras, brita, boxes, arquibancada e mata são os do jogo original.
+7. **Limites de pista**: a volta é invalidada quando as quatro rodas saem da pista ou quando alguma roda pega a brita. O tempo fica vermelho e a volta não vale como melhor volta. Zebra vale.
+8. **Minimapa** no canto inferior esquerdo, com o traçado e a posição do carro.
+9. **Câmera do piloto**: a tecla `C` passa também por uma câmera atrás do volante.
+10. **Melhor volta guardada por carro e por mapa.**
+11. `AGENTS.md` com o que foi aprendido ao fazer as mudanças, e `fable/tools/` com os scripts de verificação e de geração do traçado de Spa.
+
+O que não mudou: a física do Uno. A volta roteirizada e o benchmark terminam exatamente no mesmo estado do jogo original, e usam sempre o Uno no circuito Serra da Mata.
+
 ## Jogar
 
 Pelo navegador, sem baixar nada:
@@ -49,11 +74,15 @@ Os dois jogos respondem aos mesmos comandos. A lista também aparece na tela de 
 
 | | Teclado | Controle |
 |---|---|---|
-| Acelerar | `W` ou `↑` | Gatilho direito |
-| Frear e dar ré | `S` ou `↓` | Gatilho esquerdo |
+| Acelerar | `W` (e `↑` na versão do Opus) | Gatilho direito |
+| Frear e dar ré | `S` (e `↓` na versão do Opus) | Gatilho esquerdo |
+| Carro voador, versão do Fable: liga e desliga com `Backspace`; no ar, `↓` sobe e `↑` desce | `Backspace` `↑` `↓` | |
+| Trocar de mapa, versão do Fable (recarrega a página): Serra da Mata ou Spa-Francorchamps em tamanho real | `P` | |
+| Chevette, versão do Fable: tração em curva | `↑` `↓` | |
 | Fazer curvas | `A` `D` ou `←` `→` | Analógico esquerdo |
 | Freio de mão | `Espaço` | `A` |
 | Trocar a câmera | `C` | `Y` |
+| Trocar de carro (só na versão do Fable) | `Y` | `LB` |
 | Olhar para trás | Segurar `V` | Segurar `RB` |
 | Devolver o carro à pista | `R` | `X` |
 | Pausar e abrir o menu | `Esc` | `Start` |
@@ -65,6 +94,10 @@ Os dois jogos respondem aos mesmos comandos. A lista também aparece na tela de 
 | Benchmark: a volta roteirizada de 60 s, com média e máximo no fim | `B` |
 | Assistir à volta roteirizada | `F` |
 | Poses fixas de câmera | `1` a `6` |
+
+Na versão do Fable há um segundo carro: um Chevrolet Chevette SL 1987 vermelho, de tração traseira e com um pouco mais de motor. A troca acontece no lugar, com o carro andando; a melhor volta é guardada por carro, e a volta roteirizada e o benchmark usam sempre o Uno.
+
+Na versão do Fable a volta é invalidada (tempo em vermelho, não vale como melhor volta) quando as quatro rodas saem da pista ou quando alguma roda pega a brita; passar por cima da zebra vale.
 
 O câmbio é automático, e a volta conta quando o carro cruza a linha de largada. O som começa depois do primeiro clique.
 
@@ -99,6 +132,7 @@ Cada comando reescreve o `index.html` da versão.
 |---|---|
 | `js/10_track.js` | O circuito: traçado, elevação e zonas. **Um bom lugar para começar.** |
 | `js/30_car_*.js` | O Uno: a forma da carroceria, a pintura, as peças, o rack e a escada |
+| `js/30_car_e_extras.js` | Os carros extras (o Chevette), feitos sobre a mesma pele do Uno |
 | `js/31_world.js`, `js/32_props.js` | Terreno, pista, guard-rails, arquibancada, boxes e pórtico |
 | `js/33_veg_*.js` | A mata: árvores, grama e os impostores de longe |
 | `js/40_vehicle.js` | A física do carro |

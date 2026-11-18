@@ -2,15 +2,18 @@
 // id (mat.x): 1 pintura | 2 plástico preto | 3 borracha | 4 pneu | 5 calota | 6 aço | 7 cromado | 8 interior | 9 lente opaca
 //             10 alumínio | 11 cinta | 12 decalque do atlas | 13 fundo | 14 refletor do farol | 15 espelho | 16 palhetas da grade
 //             17 pintura lisa brilhante (capacete; a=1 preto vítreo)
+// F.car.w = carro em uso (0 Uno, 1 Chevette): escolhe a cor da pintura e os detalhes desenhados sobre ela.
 // O.p0 da carroceria: x = luz de freio, y = luz de ré, z = faróis. O.p0.x das rodas = |velocidade angular|.
 #include mesh_vert
 @group(3) @binding(0) var tAtlas: texture_2d<f32>;
+const PAINT_CHV = vec3f(0.215, 0.008, 0.007);   // Chevette: vermelho liso (sem flocos metálicos)
 const PAINT_COL = vec3f(0.168, 0.275, 0.425);   // azul-claro metálico de estúdio: mais escuro e acinzentado (o sol do jogo é forte)
 fn carBulgeW(x: f32) -> f32 { return 0.055 * smoothstep(-0.15, 0.25, x) - 0.036 * smoothstep(-1.15, -1.42, x); }
 fn surf(in: V2F, ff: bool) -> Surface {
   var s = surfDefault(normalize(in.nrm));
   let id = matId(in.mat); let pa = matA(in.mat) * 255.0;
   let lp = in.ext.xyz;
+  let cid = u32(F.car.w + 0.5);
   s.albedo = in.col.rgb;
   switch (id) {
     case 1u: {   // pintura azul-claro metálica com verniz
@@ -20,6 +23,13 @@ fn surf(in: V2F, ff: bool) -> Surface {
       let nO = normalize((vec4f(s.normal, 0.0) * O.model).xyz); let wt = abs(nO) / (abs(nO.x) + abs(nO.y) + abs(nO.z));
       let fl = textureSample(tNoise, sLin, lp.zy * 23.0).a * wt.x + textureSample(tNoise, sLin, lp.xz * 23.0).a * wt.y + textureSample(tNoise, sLin, lp.xy * 23.0).a * wt.z - 0.5;
       s.albedo = PAINT_COL * (1.0 + 0.08 * fl); s.metal = 0.58; s.rough = 0.3 + 0.04 * fl; s.coat = 1.0;
+      if (cid == 1u) {
+        s.albedo = PAINT_CHV * (1.0 + 0.02 * fl); s.metal = 0.0; s.rough = 0.3;
+        // saias sob os para-choques: a parte de baixo dos balanços fica escura (lê como sombra, a saia termina mais alta)
+        let low = (1.0 - smoothstep(0.3, 0.335, lp.y)) * smoothstep(1.5, 1.56, abs(lp.x));
+        s.albedo = mix(s.albedo, vec3f(0.008), low); s.coat *= 1.0 - low; s.rough = mix(s.rough, 0.95, low);
+      }
+      if (cid == 0u) {
       // abas dos recortes junto ao chão (base das caixas de roda): escuras, para não sobrar lasca clara pendurada
       { let under = (1.0 - smoothstep(0.31, 0.345, lp.y)) * smoothstep(1.4, 1.5, abs(lp.x)); s.albedo = mix(s.albedo, vec3f(0.01), under); s.coat *= 1.0 - under; s.metal *= 1.0 - under; s.rough = mix(s.rough, 0.95, under); }
       if (pa > 0.5) { let low = max(1.0 - smoothstep(0.2, 0.26, lp.y), (1.0 - smoothstep(0.54, 0.6, lp.y)) * smoothstep(1.2, 1.3, abs(lp.x))); s.albedo = mix(s.albedo, vec3f(0.012), low); s.coat *= 1.0 - low; s.metal *= 1.0 - low; s.rough = mix(s.rough, 0.9, low); }
@@ -87,6 +97,20 @@ fn surf(in: V2F, ff: bool) -> Surface {
           black = max(black, lv);
         }
         s.albedo = mix(s.albedo, vec3f(0.016) * lvShade, black); s.coat *= 1.0 - black; s.rough = mix(s.rough, 0.95, black); s.metal *= 1.0 - black; s.ao = min(s.ao, 1.0 - line * 0.6);
+      }
+      } else if (pa < 0.5) {
+        // demais carros: vão entre painéis e friso lateral baixo de borracha preta com filete prateado em cima, entre as caixas de roda
+        let d = abs(in.uv.x); let w = max(fwidth(d), 1e-5); let hw = 0.002;
+        let line = sat((hw - d) / w + 0.5) * min(1.0, 2.0 * hw / w);
+        let halo = (1.0 - smoothstep(hw, hw + 0.007, d)) * sat(0.0035 / w);
+        s.albedo *= 1.0 - 0.22 * halo; s.ao = min(s.ao, 1.0 - 0.4 * halo);
+        let side = step(in.uv.y, 0.4);
+        let wy = max(fwidth(lp.y), 1e-5); let sx = smoothstep(-0.9, -0.87, lp.x) * (1.0 - smoothstep(0.87, 0.9, lp.x));
+        let strip = sat((0.034 - abs(lp.y - 0.49)) / wy + 0.5) * min(1.0, 0.068 / wy) * side * sx;
+        let fil = sat((0.005 - abs(lp.y - 0.519)) / wy + 0.5) * min(1.0, 0.01 / wy) * side * sx;
+        let black = max(line, strip * (1.0 - fil));
+        s.albedo = mix(s.albedo, vec3f(0.016), black); s.coat *= 1.0 - max(black, fil); s.rough = mix(s.rough, 0.9, black); s.ao = min(s.ao, 1.0 - line * 0.6);
+        s.albedo = mix(s.albedo, vec3f(0.7, 0.71, 0.73), fil); s.metal = mix(s.metal, 0.9, fil); s.rough = mix(s.rough, 0.3, fil);
       }
     }
     case 2u: {   // plástico preto: granulado finíssimo (quase liso a 3 m), arestas vivas, um pouco de difuso para ler na sombra
@@ -167,10 +191,10 @@ fn surf(in: V2F, ff: bool) -> Surface {
         // o albedo fica sempre escuro (ao sol não lava para rosa); o freio aceso vem só do emissivo, em vermelho puro
         var c = mix(vec3f(0.17, 0.003, 0.002), vec3f(0.2, 0.004, 0.002), br); var e = mix(0.03, 0.66, br);
         if (v > 0.66) { c = vec3f(0.19, 0.05, 0.002); e = 0.006; }
-        else if (v < 0.2 && u < 0.36) { c = mix(vec3f(0.1, 0.1, 0.098), vec3f(1.0, 1.0, 0.95), sat(O.p0.y)); e = 0.004 + sat(O.p0.y) * 0.5; }   // ré: pequeno retângulo interno
+        else if (v < 0.2 && (u < 0.36 || cid == 1u)) { c = mix(vec3f(0.1, 0.1, 0.098), vec3f(1.0, 1.0, 0.95), sat(O.p0.y)); e = 0.004 + sat(O.p0.y) * 0.5; }   // ré: pequeno retângulo interno
         // divisórias em relevo entre as seções (horizontais) e uma vertical a 1/3 da largura: barras escuras com chanfro
         let fy = max(fwidth(v), 1e-4); let fu = max(fwidth(u), 1e-4);
-        let dh = min(abs(v - 0.66), select(9.0, abs(v - 0.2), u < 0.36)); let dvv = select(9.0, abs(u - 0.36), v < 0.2);
+        let dh = min(abs(v - 0.66), select(9.0, abs(v - 0.2), u < 0.36 || cid == 1u)); let dvv = select(9.0, abs(u - 0.36), v < 0.2 && cid == 0u);
         // moldura escura fina em volta da lente (bordas de cima, de baixo e interna)
         let vh = (0.5 - abs(v - 0.5)) ; let edge = max(sat(1.0 - (vh - 0.0) / max(0.028, fy)), sat(1.0 - u / max(0.03, fu)));
         let k = sat(max(max(sat(1.0 - dh / max(0.02, fy)), sat(1.0 - dvv / max(0.014, fu))), edge));
@@ -187,7 +211,7 @@ fn surf(in: V2F, ff: bool) -> Surface {
         // piscas: lente âmbar translúcida (mais escura e saturada) com o brilho do refletor por trás e verniz
 // (uv.x = x + z: coordenada ao longo da frente/lateral) — frisos verticais finos e um degradê de refletor por trás
         let fl2 = 0.5 + 0.5 * sin(in.uv.x * 6.2831853 / 0.0075); let fadeP = sat(1.0 - fwidth(in.uv.x) / 0.0075 * 2.0);
-        let gy = 1.0 - 0.45 * abs((lp.y - 0.693) / 0.062);
+        let gy = select(1.0, 1.0 - 0.45 * abs((lp.y - 0.693) / 0.062), cid == 0u);
         s.albedo = in.col.rgb * vec3f(0.9, 0.62, 0.3) * mix(1.0, 0.74 + 0.4 * fl2, fadeP) * gy * (0.9 + 0.1 * rib); s.rough = 0.3; s.coat = 0.7; s.emissive = 0.03;   // lente lisa translúcida, só com frisos horizontais finos
       }
     }

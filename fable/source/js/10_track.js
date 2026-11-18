@@ -1,6 +1,8 @@
 // Circuito original: traçado, elevação, zonas e altura do terreno (somente CPU; sem GPU).
 // Convenções: X leste, Z sul, Y para cima. Sentido horário. s = distância ao longo do eixo (m), d = afastamento lateral (m, + à direita).
+const MAPS = ['Serra da Mata', 'Spa-Francorchamps'];
 const TRK = {
+  map: Math.min(MAPS.length - 1, Math.max(0, +(Q.get('mapa') || 0) | 0)),   // 0 = circuito original; 1 = Spa (10_track_b_spa.js). Escolhido na carga da página (?mapa=1); a tecla P recarrega com o outro
   N: 0, L: 0, ds: 1,
   x: null, z: null, y: null, tx: null, tz: null, k: null, bank: null, slope: null,
   hw: 5.5,                 // meia largura do asfalto
@@ -53,7 +55,7 @@ function trackBuild() {
   const Lw = (ex * d - b * ez) / det, Ln = (a * ez - c * ex) / det;
   // amostragem bruta a cada 0.5 m
   const raw = []; const elevKeys = [];
-  const total = walk(Lw, Ln, (sg, s0, L, x, z, th, k) => {
+  let total = walk(Lw, Ln, (sg, s0, L, x, z, th, k) => {
     TRK.segs.push({ type: sg[0], s0, s1: s0 + L, k, name: sg[4] || '', R: sg[0] === 'A' ? sg[1] : 0, ang: sg[0] === 'A' ? sg[2] : 0 });
     elevKeys.push([s0 + L, sg[0] === 'S' ? sg[2] : sg[3]]);
     const n = Math.max(1, Math.round(L / 0.5));
@@ -64,6 +66,7 @@ function trackBuild() {
     }
   })[2];
   TRK.Lw = Lw; TRK.Ln = Ln;
+  if (TRK.map) { raw.length = 0; TRK.segs.length = 0; spaRaw(raw); total = raw.length * 0.5; }   // outro mapa: troca o eixo; daqui em diante é igual
   // suaviza (gaussiana periódica) para criar transições de curvatura
   const M = raw.length, sm = new Array(M), SG = 14, KS = 42;
   for (let i = 0; i < M; i++) {
@@ -99,8 +102,10 @@ function trackBuild() {
     const f = sat((s - k0[0]) / Math.max(1e-3, k1[0] - k0[0])); ey[i] = k0[1] + (k1[1] - k0[1]) * (0.5 - 0.5 * Math.cos(f * PI));
   }
   const gs = (src, dst, sg) => { const ks = Math.ceil(sg * 3); for (let i = 0; i < N; i++) { let s = 0, w = 0; for (let q = -ks; q <= ks; q++) { const g = Math.exp(-0.5 * q * q / (sg * sg)); s += src[(i + q + N * 4) % N] * g; w += g; } dst[i] = s / w; } };
+  if (TRK.map) for (let i = 0; i < N; i++) ey[i] = spaElev(i / N);
   gs(ey, Y, 16);
   const kb = F(); gs(K, kb, 6);
+  if (TRK.map) spaSegs(kb);
   for (let i = 0; i < N; i++) { BK[i] = clamp(kb[i] * 1.7, -0.062, 0.062); TRK.slope[i] = (Y[(i + 1) % N] - Y[(i - 1 + N) % N]) / (2 * ds); }
   // zebras, brita e barreiras a partir dos segmentos em arco
   const mark = (arr, s0, s1, val, ramp) => {
@@ -158,6 +163,7 @@ function trackBuild() {
   const cell = TRK.gridCell, pad = 240; TRK.gridX0 = x0 - pad; TRK.gridZ0 = z0 - pad;
   TRK.gridW = Math.ceil((x1 - x0 + 2 * pad) / cell); TRK.gridH = Math.ceil((z1 - z0 + 2 * pad) / cell);
   // para cada célula, guarda o índice da amostra mais próxima do centro da célula (semente da busca local)
+  if (TRK.map) { const R = []; let m = 0; for (let i = 0; i < N; i += 40) { R.push(X[i], Z[i], Y[i]); m += Y[i]; } TRK.reg = new Float64Array(R); TRK.regMean = m / (R.length / 3); }
   TRK.grid = new Int32Array(TRK.gridW * TRK.gridH); TRK.gridDist = new Float32Array(TRK.gridW * TRK.gridH); TRK.cellList = new Array(TRK.gridW * TRK.gridH);
   const tmpL = [];
   for (let gz = 0; gz < TRK.gridH; gz++) for (let gx = 0; gx < TRK.gridW; gx++) {
@@ -220,11 +226,12 @@ function trackSurfY(i0, f, d) {
 // relevo natural (sem a pista): plano regional + ondulações + serras ao redor
 function naturalH(x, z) {
   const dx = x - TRK.cx, dz = z - TRK.cz, r = Math.hypot(dx, dz);
-  const reg = (0.0443 * x + 0.0127 * z) * (1 - smooth(260, 700, r)) + 6 * smooth(260, 700, r);
+  const rh = TRK.map ? Math.max(0, r - 950) : r;   // no mapa maior as serras começam mais longe do centro
+  const reg = TRK.map ? lerp(spaReg(x, z), TRK.regMean, smooth(1500, 2600, r)) : (0.0443 * x + 0.0127 * z) * (1 - smooth(260, 700, r)) + 6 * smooth(260, 700, r);
   const und = (fbm(x * 0.0065 + 3.1, z * 0.0065 - 1.7, 4) - 0.5) * 16 * smooth(60, 320, r) + (fbm(x * 0.021, z * 0.021, 3) - 0.5) * 3.0;
   // serras: cristas (ridged) crescendo com a distância
   const rn = 1 - Math.abs(fbm(x * 0.0011 + 7.7, z * 0.0011 + 2.2, 5) * 2 - 1); const rn2 = fbm(x * 0.00042 - 4.0, z * 0.00042 + 9.0, 4);
-  const hills = (rn * rn * 150 + rn2 * 120 - 40) * smooth(380, 1700, r) + (rn2 * rn2 * 520 + rn * 130) * smooth(2200, 5200, r);
+  const hills = (rn * rn * 150 + rn2 * 120 - 40) * smooth(380, 1700, rh) + (rn2 * rn2 * 520 + rn * 130) * smooth(2200, 5200, rh);
   return reg + und + Math.max(-6, hills);
 }
 // altura do terreno com o corredor da pista embutido. Usada para preencher o campo de alturas e a malha do terreno.

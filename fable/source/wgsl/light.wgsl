@@ -23,16 +23,17 @@
 fn worldAt(uv: vec2f, d: f32) -> vec3f { let p = F.invViewProjJ * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0); return p.xyz / p.w; }
 // oclusão analítica do carro sobre o chão: caixa arredondada da carroceria + contato de cada pneu.
 // Escurece a luz ambiente debaixo e em volta do carro (e um pouco a direta, junto aos pneus).
+// F.car2.yzw = meio comprimento, centro e meio entre-eixos do carro em uso.
 fn carAO(wp: vec3f, n: vec3f) -> f32 {
   let lp = (F.carInv * vec4f(wp, 1.0)).xyz;
   let ln = (F.carInv * vec4f(n, 0.0)).xyz;
   if (ln.y < 0.3 || lp.y > 0.2 || lp.y < -0.6 || abs(lp.x) > 4.5 || abs(lp.z) > 3.5) { return 1.0; }
-  let q = vec2f(abs(lp.x - 0.07) - 1.72, abs(lp.z) - 0.72);
+  let q = vec2f(abs(lp.x - F.car2.z) - F.car2.y, abs(lp.z) - 0.72);
   let dOut = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);   // distância assinada ao retângulo
   let h = max(0.26 - lp.y, 0.03);                                     // altura do assoalho sobre o ponto (com piso: sem divisão por ~0)
   let occ = sat(1.0 - (dOut + 0.03) / (h * 3.0 + 0.3));
   // pneus: mancha curta e forte em volta de cada área de contato
-  let dw = length(vec2f((abs(lp.x) - 1.181) * 0.8, abs(lp.z) - 0.66));
+  let dw = length(vec2f((abs(lp.x) - F.car2.w) * 0.8, abs(lp.z) - 0.66));
   let wo = sat(1.0 - dw / 0.5);
   return 1.0 - max(occ * occ * 0.94, wo * wo * 0.9) * sat(1.5 - h * 1.2);
 }

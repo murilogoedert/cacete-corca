@@ -102,10 +102,13 @@ function hudDraw() {
     g.stroke();
     const hr = L[6]; g.drawImage(H.hub, (L[0] - hr) * 16, (cy - hr) * 16, hr * 32, hr * 32); g.drawImage(H.hub, (L[2] - hr) * 16, (cy - hr) * 16, hr * 32, hr * 32);
   }
-  const cur = V[3], last = V[4], best = V[5];
-  if (cur !== K[4] || last !== K[5] || best !== K[6]) {
+  const cur = V[3], last = V[4], best = V[5], inv = GS.lapInv ? 1 : 0;
+  if (cur !== K[4] || last !== K[5] || best !== K[6] || inv !== H.inv) {
+    H.inv = inv;
     K[4] = cur; K[5] = last; K[6] = best; const t = H.t, B = H.B, y = L[16];
-    t.clearRect(0, 0, L[17], L[18]); t.drawImage(H.bgT, 0, 0); hudTime(t, B, cur, L[10], y); hudTime(t, B, last, L[11], y); hudTime(t, B, best, L[12], y);
+    t.clearRect(0, 0, L[17], L[18]); t.drawImage(H.bgT, 0, 0); hudTime(t, B, cur, L[10], y);
+    if (inv) { t.globalCompositeOperation = 'multiply'; t.fillStyle = '#ff3b2a'; t.fillRect(L[10], y, B.w[0] * 5 + B.w[10] + B.w[11], B.h); t.globalCompositeOperation = 'source-over'; }   // volta invalidada: tempo em vermelho
+    hudTime(t, B, last, L[11], y); hudTime(t, B, best, L[12], y);
   }
 }
 // estatísticas de desempenho (tecla H): média de meio segundo de quadros; RT[3] = intervalo do último quadro (ms)

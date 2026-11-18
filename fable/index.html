@@ -9,7 +9,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 #c{position:absolute;inset:0;margin:auto;width:100vw;height:100vh;display:block;object-fit:contain}
 #msg{position:absolute;left:0;right:0;top:45%;text-align:center;letter-spacing:.08em;white-space:pre-wrap}
 #hint{position:absolute;left:14px;bottom:10px;opacity:.75;text-shadow:0 1px 2px #000;transition:opacity 1.5s;pointer-events:none}
-#hg,#ht,#hs,#tag,#ui{display:none;position:absolute;pointer-events:none}
+#hg,#ht,#hs,#tag,#ui,#mm{display:none;position:absolute;pointer-events:none}
+#mm{left:1.6vh;bottom:1.6vh}#mmc{display:block}
+#mmd{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#ff5a36;border:2px solid #fff;box-sizing:border-box}
 #hg{right:1.6vh;bottom:1.6vh}
 #ht{left:50%;top:1.6vh;transform:translateX(-50%)}
 #hs{left:1.6vh;top:1.6vh}
@@ -35,19 +37,23 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <body>
 <canvas id="c"></canvas>
 <div id="msg">carregando…</div>
-<div id="hint">W acelera · S freia/ré · A/D faz curvas · Espaço freio de mão · C câmera · R volta à pista</div>
-<canvas id="hg"></canvas><canvas id="ht"></canvas><canvas id="hs"></canvas><div id="tag"></div>
+<div id="hint">W acelera · S freia/ré · A/D faz curvas · Espaço freio de mão · C câmera · Y carro · R volta à pista</div>
+<canvas id="hg"></canvas><canvas id="ht"></canvas><canvas id="hs"></canvas><div id="tag"></div><div id="mm"><canvas id="mmc"></canvas><div id="mmd"></div></div>
 <div id="ui"><div>
 <h1>Uno com escada</h1>
 <p class="sub">Fiat Uno Mille EP 1996 · circuito</p>
 <div id="res"></div>
 <div class="cols">
 <div><h2>Teclado</h2><table>
-<tr><td>W ou ↑</td><td>acelera</td></tr>
-<tr><td>S ou ↓</td><td>freia e dá ré</td></tr>
+<tr><td>W</td><td>acelera</td></tr>
+<tr><td>S</td><td>freia e dá ré</td></tr>
 <tr><td>A D ou ← →</td><td>faz curvas</td></tr>
 <tr><td>Espaço</td><td>freio de mão</td></tr>
-<tr><td>C</td><td>troca a câmera</td></tr>
+<tr><td>C</td><td>troca a câmera (inclui a do piloto)</td></tr>
+<tr><td>Y</td><td>troca de carro</td></tr>
+<tr><td>P</td><td>troca de mapa (recarrega)</td></tr>
+<tr><td>↑ ↓</td><td>Chevette: tração em curva</td></tr>
+<tr><td>Backspace</td><td>carro voador (↓ sobe, ↑ desce)</td></tr>
 <tr><td>V (segurar)</td><td>olha para trás</td></tr>
 <tr><td>R</td><td>devolve o carro à pista</td></tr>
 <tr><td>Esc</td><td>pausa e abre este menu</td></tr>
@@ -58,6 +64,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <tr><td>Analógico esquerdo</td><td>faz curvas</td></tr>
 <tr><td>A</td><td>freio de mão</td></tr>
 <tr><td>Y</td><td>troca a câmera</td></tr>
+<tr><td>LB</td><td>troca de carro</td></tr>
 <tr><td>RB (segurar)</td><td>olha para trás</td></tr>
 <tr><td>X</td><td>devolve o carro à pista</td></tr>
 <tr><td>Start</td><td>abre este menu</td></tr>
@@ -68,7 +75,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <tr><td>B</td><td>benchmark (volta roteirizada de 60 s)</td></tr>
 <tr><td>F</td><td>assistir à volta roteirizada</td></tr>
 <tr><td>1 a 6</td><td>poses fixas</td></tr>
-<tr><td colspan="2" style="font-weight:400;color:#ddd;opacity:.75;padding-top:.5em">Câmbio automático · a volta conta<br>ao cruzar a linha de largada</td></tr>
+<tr><td colspan="2" style="font-weight:400;color:#ddd;opacity:.75;padding-top:.5em">Câmbio automático · a volta conta<br>ao cruzar a linha de largada · sair da<br>pista ou pegar a brita invalida a volta</td></tr>
 </table></div>
 </div>
 <div class="bt"><button id="b0">Começar</button><button id="b1">Benchmark</button></div>
@@ -607,16 +614,17 @@ WGSL["light"] = `// Passe de iluminação diferida: sol + sombras + ambiente (SH
 fn worldAt(uv: vec2f, d: f32) -> vec3f { let p = F.invViewProjJ * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0); return p.xyz / p.w; }
 // oclusão analítica do carro sobre o chão: caixa arredondada da carroceria + contato de cada pneu.
 // Escurece a luz ambiente debaixo e em volta do carro (e um pouco a direta, junto aos pneus).
+// F.car2.yzw = meio comprimento, centro e meio entre-eixos do carro em uso.
 fn carAO(wp: vec3f, n: vec3f) -> f32 {
   let lp = (F.carInv * vec4f(wp, 1.0)).xyz;
   let ln = (F.carInv * vec4f(n, 0.0)).xyz;
   if (ln.y < 0.3 || lp.y > 0.2 || lp.y < -0.6 || abs(lp.x) > 4.5 || abs(lp.z) > 3.5) { return 1.0; }
-  let q = vec2f(abs(lp.x - 0.07) - 1.72, abs(lp.z) - 0.72);
+  let q = vec2f(abs(lp.x - F.car2.z) - F.car2.y, abs(lp.z) - 0.72);
   let dOut = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);   // distância assinada ao retângulo
   let h = max(0.26 - lp.y, 0.03);                                     // altura do assoalho sobre o ponto (com piso: sem divisão por ~0)
   let occ = sat(1.0 - (dOut + 0.03) / (h * 3.0 + 0.3));
   // pneus: mancha curta e forte em volta de cada área de contato
-  let dw = length(vec2f((abs(lp.x) - 1.181) * 0.8, abs(lp.z) - 0.66));
+  let dw = length(vec2f((abs(lp.x) - F.car2.w) * 0.8, abs(lp.z) - 0.66));
   let wo = sat(1.0 - dw / 0.5);
   return 1.0 - max(occ * occ * 0.94, wo * wo * 0.9) * sat(1.5 - h * 1.2);
 }
@@ -753,15 +761,18 @@ WGSL["mat_car"] = `// Materiais do carro (Fiat Uno Mille EP): pintura metálica 
 // id (mat.x): 1 pintura | 2 plástico preto | 3 borracha | 4 pneu | 5 calota | 6 aço | 7 cromado | 8 interior | 9 lente opaca
 //             10 alumínio | 11 cinta | 12 decalque do atlas | 13 fundo | 14 refletor do farol | 15 espelho | 16 palhetas da grade
 //             17 pintura lisa brilhante (capacete; a=1 preto vítreo)
+// F.car.w = carro em uso (0 Uno, 1 Chevette): escolhe a cor da pintura e os detalhes desenhados sobre ela.
 // O.p0 da carroceria: x = luz de freio, y = luz de ré, z = faróis. O.p0.x das rodas = |velocidade angular|.
 #include mesh_vert
 @group(3) @binding(0) var tAtlas: texture_2d<f32>;
+const PAINT_CHV = vec3f(0.215, 0.008, 0.007);   // Chevette: vermelho liso (sem flocos metálicos)
 const PAINT_COL = vec3f(0.168, 0.275, 0.425);   // azul-claro metálico de estúdio: mais escuro e acinzentado (o sol do jogo é forte)
 fn carBulgeW(x: f32) -> f32 { return 0.055 * smoothstep(-0.15, 0.25, x) - 0.036 * smoothstep(-1.15, -1.42, x); }
 fn surf(in: V2F, ff: bool) -> Surface {
   var s = surfDefault(normalize(in.nrm));
   let id = matId(in.mat); let pa = matA(in.mat) * 255.0;
   let lp = in.ext.xyz;
+  let cid = u32(F.car.w + 0.5);
   s.albedo = in.col.rgb;
   switch (id) {
     case 1u: {   // pintura azul-claro metálica com verniz
@@ -771,6 +782,13 @@ fn surf(in: V2F, ff: bool) -> Surface {
       let nO = normalize((vec4f(s.normal, 0.0) * O.model).xyz); let wt = abs(nO) / (abs(nO.x) + abs(nO.y) + abs(nO.z));
       let fl = textureSample(tNoise, sLin, lp.zy * 23.0).a * wt.x + textureSample(tNoise, sLin, lp.xz * 23.0).a * wt.y + textureSample(tNoise, sLin, lp.xy * 23.0).a * wt.z - 0.5;
       s.albedo = PAINT_COL * (1.0 + 0.08 * fl); s.metal = 0.58; s.rough = 0.3 + 0.04 * fl; s.coat = 1.0;
+      if (cid == 1u) {
+        s.albedo = PAINT_CHV * (1.0 + 0.02 * fl); s.metal = 0.0; s.rough = 0.3;
+        // saias sob os para-choques: a parte de baixo dos balanços fica escura (lê como sombra, a saia termina mais alta)
+        let low = (1.0 - smoothstep(0.3, 0.335, lp.y)) * smoothstep(1.5, 1.56, abs(lp.x));
+        s.albedo = mix(s.albedo, vec3f(0.008), low); s.coat *= 1.0 - low; s.rough = mix(s.rough, 0.95, low);
+      }
+      if (cid == 0u) {
       // abas dos recortes junto ao chão (base das caixas de roda): escuras, para não sobrar lasca clara pendurada
       { let under = (1.0 - smoothstep(0.31, 0.345, lp.y)) * smoothstep(1.4, 1.5, abs(lp.x)); s.albedo = mix(s.albedo, vec3f(0.01), under); s.coat *= 1.0 - under; s.metal *= 1.0 - under; s.rough = mix(s.rough, 0.95, under); }
       if (pa > 0.5) { let low = max(1.0 - smoothstep(0.2, 0.26, lp.y), (1.0 - smoothstep(0.54, 0.6, lp.y)) * smoothstep(1.2, 1.3, abs(lp.x))); s.albedo = mix(s.albedo, vec3f(0.012), low); s.coat *= 1.0 - low; s.metal *= 1.0 - low; s.rough = mix(s.rough, 0.9, low); }
@@ -838,6 +856,20 @@ fn surf(in: V2F, ff: bool) -> Surface {
           black = max(black, lv);
         }
         s.albedo = mix(s.albedo, vec3f(0.016) * lvShade, black); s.coat *= 1.0 - black; s.rough = mix(s.rough, 0.95, black); s.metal *= 1.0 - black; s.ao = min(s.ao, 1.0 - line * 0.6);
+      }
+      } else if (pa < 0.5) {
+        // demais carros: vão entre painéis e friso lateral baixo de borracha preta com filete prateado em cima, entre as caixas de roda
+        let d = abs(in.uv.x); let w = max(fwidth(d), 1e-5); let hw = 0.002;
+        let line = sat((hw - d) / w + 0.5) * min(1.0, 2.0 * hw / w);
+        let halo = (1.0 - smoothstep(hw, hw + 0.007, d)) * sat(0.0035 / w);
+        s.albedo *= 1.0 - 0.22 * halo; s.ao = min(s.ao, 1.0 - 0.4 * halo);
+        let side = step(in.uv.y, 0.4);
+        let wy = max(fwidth(lp.y), 1e-5); let sx = smoothstep(-0.9, -0.87, lp.x) * (1.0 - smoothstep(0.87, 0.9, lp.x));
+        let strip = sat((0.034 - abs(lp.y - 0.49)) / wy + 0.5) * min(1.0, 0.068 / wy) * side * sx;
+        let fil = sat((0.005 - abs(lp.y - 0.519)) / wy + 0.5) * min(1.0, 0.01 / wy) * side * sx;
+        let black = max(line, strip * (1.0 - fil));
+        s.albedo = mix(s.albedo, vec3f(0.016), black); s.coat *= 1.0 - max(black, fil); s.rough = mix(s.rough, 0.9, black); s.ao = min(s.ao, 1.0 - line * 0.6);
+        s.albedo = mix(s.albedo, vec3f(0.7, 0.71, 0.73), fil); s.metal = mix(s.metal, 0.9, fil); s.rough = mix(s.rough, 0.3, fil);
       }
     }
     case 2u: {   // plástico preto: granulado finíssimo (quase liso a 3 m), arestas vivas, um pouco de difuso para ler na sombra
@@ -918,10 +950,10 @@ fn surf(in: V2F, ff: bool) -> Surface {
         // o albedo fica sempre escuro (ao sol não lava para rosa); o freio aceso vem só do emissivo, em vermelho puro
         var c = mix(vec3f(0.17, 0.003, 0.002), vec3f(0.2, 0.004, 0.002), br); var e = mix(0.03, 0.66, br);
         if (v > 0.66) { c = vec3f(0.19, 0.05, 0.002); e = 0.006; }
-        else if (v < 0.2 && u < 0.36) { c = mix(vec3f(0.1, 0.1, 0.098), vec3f(1.0, 1.0, 0.95), sat(O.p0.y)); e = 0.004 + sat(O.p0.y) * 0.5; }   // ré: pequeno retângulo interno
+        else if (v < 0.2 && (u < 0.36 || cid == 1u)) { c = mix(vec3f(0.1, 0.1, 0.098), vec3f(1.0, 1.0, 0.95), sat(O.p0.y)); e = 0.004 + sat(O.p0.y) * 0.5; }   // ré: pequeno retângulo interno
         // divisórias em relevo entre as seções (horizontais) e uma vertical a 1/3 da largura: barras escuras com chanfro
         let fy = max(fwidth(v), 1e-4); let fu = max(fwidth(u), 1e-4);
-        let dh = min(abs(v - 0.66), select(9.0, abs(v - 0.2), u < 0.36)); let dvv = select(9.0, abs(u - 0.36), v < 0.2);
+        let dh = min(abs(v - 0.66), select(9.0, abs(v - 0.2), u < 0.36 || cid == 1u)); let dvv = select(9.0, abs(u - 0.36), v < 0.2 && cid == 0u);
         // moldura escura fina em volta da lente (bordas de cima, de baixo e interna)
         let vh = (0.5 - abs(v - 0.5)) ; let edge = max(sat(1.0 - (vh - 0.0) / max(0.028, fy)), sat(1.0 - u / max(0.03, fu)));
         let k = sat(max(max(sat(1.0 - dh / max(0.02, fy)), sat(1.0 - dvv / max(0.014, fu))), edge));
@@ -938,7 +970,7 @@ fn surf(in: V2F, ff: bool) -> Surface {
         // piscas: lente âmbar translúcida (mais escura e saturada) com o brilho do refletor por trás e verniz
 // (uv.x = x + z: coordenada ao longo da frente/lateral) — frisos verticais finos e um degradê de refletor por trás
         let fl2 = 0.5 + 0.5 * sin(in.uv.x * 6.2831853 / 0.0075); let fadeP = sat(1.0 - fwidth(in.uv.x) / 0.0075 * 2.0);
-        let gy = 1.0 - 0.45 * abs((lp.y - 0.693) / 0.062);
+        let gy = select(1.0, 1.0 - 0.45 * abs((lp.y - 0.693) / 0.062), cid == 0u);
         s.albedo = in.col.rgb * vec3f(0.9, 0.62, 0.3) * mix(1.0, 0.74 + 0.4 * fl2, fadeP) * gy * (0.9 + 0.1 * rib); s.rough = 0.3; s.coat = 0.7; s.emissive = 0.03;   // lente lisa translúcida, só com frisos horizontais finos
       }
     }
@@ -3203,7 +3235,9 @@ class MeshBuilder {
 // ---- 10_track.js
 // Circuito original: traçado, elevação, zonas e altura do terreno (somente CPU; sem GPU).
 // Convenções: X leste, Z sul, Y para cima. Sentido horário. s = distância ao longo do eixo (m), d = afastamento lateral (m, + à direita).
+const MAPS = ['Serra da Mata', 'Spa-Francorchamps'];
 const TRK = {
+  map: Math.min(MAPS.length - 1, Math.max(0, +(Q.get('mapa') || 0) | 0)),   // 0 = circuito original; 1 = Spa (10_track_b_spa.js). Escolhido na carga da página (?mapa=1); a tecla P recarrega com o outro
   N: 0, L: 0, ds: 1,
   x: null, z: null, y: null, tx: null, tz: null, k: null, bank: null, slope: null,
   hw: 5.5,                 // meia largura do asfalto
@@ -3256,7 +3290,7 @@ function trackBuild() {
   const Lw = (ex * d - b * ez) / det, Ln = (a * ez - c * ex) / det;
   // amostragem bruta a cada 0.5 m
   const raw = []; const elevKeys = [];
-  const total = walk(Lw, Ln, (sg, s0, L, x, z, th, k) => {
+  let total = walk(Lw, Ln, (sg, s0, L, x, z, th, k) => {
     TRK.segs.push({ type: sg[0], s0, s1: s0 + L, k, name: sg[4] || '', R: sg[0] === 'A' ? sg[1] : 0, ang: sg[0] === 'A' ? sg[2] : 0 });
     elevKeys.push([s0 + L, sg[0] === 'S' ? sg[2] : sg[3]]);
     const n = Math.max(1, Math.round(L / 0.5));
@@ -3267,6 +3301,7 @@ function trackBuild() {
     }
   })[2];
   TRK.Lw = Lw; TRK.Ln = Ln;
+  if (TRK.map) { raw.length = 0; TRK.segs.length = 0; spaRaw(raw); total = raw.length * 0.5; }   // outro mapa: troca o eixo; daqui em diante é igual
   // suaviza (gaussiana periódica) para criar transições de curvatura
   const M = raw.length, sm = new Array(M), SG = 14, KS = 42;
   for (let i = 0; i < M; i++) {
@@ -3302,8 +3337,10 @@ function trackBuild() {
     const f = sat((s - k0[0]) / Math.max(1e-3, k1[0] - k0[0])); ey[i] = k0[1] + (k1[1] - k0[1]) * (0.5 - 0.5 * Math.cos(f * PI));
   }
   const gs = (src, dst, sg) => { const ks = Math.ceil(sg * 3); for (let i = 0; i < N; i++) { let s = 0, w = 0; for (let q = -ks; q <= ks; q++) { const g = Math.exp(-0.5 * q * q / (sg * sg)); s += src[(i + q + N * 4) % N] * g; w += g; } dst[i] = s / w; } };
+  if (TRK.map) for (let i = 0; i < N; i++) ey[i] = spaElev(i / N);
   gs(ey, Y, 16);
   const kb = F(); gs(K, kb, 6);
+  if (TRK.map) spaSegs(kb);
   for (let i = 0; i < N; i++) { BK[i] = clamp(kb[i] * 1.7, -0.062, 0.062); TRK.slope[i] = (Y[(i + 1) % N] - Y[(i - 1 + N) % N]) / (2 * ds); }
   // zebras, brita e barreiras a partir dos segmentos em arco
   const mark = (arr, s0, s1, val, ramp) => {
@@ -3361,6 +3398,7 @@ function trackBuild() {
   const cell = TRK.gridCell, pad = 240; TRK.gridX0 = x0 - pad; TRK.gridZ0 = z0 - pad;
   TRK.gridW = Math.ceil((x1 - x0 + 2 * pad) / cell); TRK.gridH = Math.ceil((z1 - z0 + 2 * pad) / cell);
   // para cada célula, guarda o índice da amostra mais próxima do centro da célula (semente da busca local)
+  if (TRK.map) { const R = []; let m = 0; for (let i = 0; i < N; i += 40) { R.push(X[i], Z[i], Y[i]); m += Y[i]; } TRK.reg = new Float64Array(R); TRK.regMean = m / (R.length / 3); }
   TRK.grid = new Int32Array(TRK.gridW * TRK.gridH); TRK.gridDist = new Float32Array(TRK.gridW * TRK.gridH); TRK.cellList = new Array(TRK.gridW * TRK.gridH);
   const tmpL = [];
   for (let gz = 0; gz < TRK.gridH; gz++) for (let gx = 0; gx < TRK.gridW; gx++) {
@@ -3423,11 +3461,12 @@ function trackSurfY(i0, f, d) {
 // relevo natural (sem a pista): plano regional + ondulações + serras ao redor
 function naturalH(x, z) {
   const dx = x - TRK.cx, dz = z - TRK.cz, r = Math.hypot(dx, dz);
-  const reg = (0.0443 * x + 0.0127 * z) * (1 - smooth(260, 700, r)) + 6 * smooth(260, 700, r);
+  const rh = TRK.map ? Math.max(0, r - 950) : r;   // no mapa maior as serras começam mais longe do centro
+  const reg = TRK.map ? lerp(spaReg(x, z), TRK.regMean, smooth(1500, 2600, r)) : (0.0443 * x + 0.0127 * z) * (1 - smooth(260, 700, r)) + 6 * smooth(260, 700, r);
   const und = (fbm(x * 0.0065 + 3.1, z * 0.0065 - 1.7, 4) - 0.5) * 16 * smooth(60, 320, r) + (fbm(x * 0.021, z * 0.021, 3) - 0.5) * 3.0;
   // serras: cristas (ridged) crescendo com a distância
   const rn = 1 - Math.abs(fbm(x * 0.0011 + 7.7, z * 0.0011 + 2.2, 5) * 2 - 1); const rn2 = fbm(x * 0.00042 - 4.0, z * 0.00042 + 9.0, 4);
-  const hills = (rn * rn * 150 + rn2 * 120 - 40) * smooth(380, 1700, r) + (rn2 * rn2 * 520 + rn * 130) * smooth(2200, 5200, r);
+  const hills = (rn * rn * 150 + rn2 * 120 - 40) * smooth(380, 1700, rh) + (rn2 * rn2 * 520 + rn * 130) * smooth(2200, 5200, rh);
   return reg + und + Math.max(-6, hills);
 }
 // altura do terreno com o corredor da pista embutido. Usada para preencher o campo de alturas e a malha do terreno.
@@ -3522,6 +3561,51 @@ function forestAt(x, z) {
   // clareiras naturais de baixa frequência (mais abertas dentro do circuito)
   const n = fbm(x * 0.0085 + 11.3, z * 0.0085 - 5.2, 3);
   return m * smooth(0.36, 0.5, n + 0.16);
+}
+
+// ---- 10_track_b_spa.js
+// Segundo mapa (tecla P): Spa-Francorchamps em tamanho real (7 km).
+// O eixo vem do mapa oficial do traçado (SVG), reamostrado em 400 pontos; aqui já em metros, girado para a reta de largada
+// apontar para +X e a linha de chegada ficar no mesmo lugar do circuito original. Sentido horário, como o de verdade.
+const SPA_PTS = [-60,0, -42.5,0, -25.1,0.1, -7.5,0.3, 10,0.5, 27.5,0.7, 45.1,0.9, 62.6,1.3, 80,1.6, 97.6,2, 115,2.4, 132.6,2.8, 150.1,3.3, 167.6,3.9, 185,4.2, 202.6,3.9, 220.1,4.9, 237,9.1, 248,21.2, 241.2,36.8, 227.3,47.2, 212,55.7, 196.9,64.8, 182.2,74, 167.3,83.4, 152.5,92.7, 137.6,101.9, 122.6,111.2, 107.6,120.2, 92.6,129, 77.3,137.5, 61.9,145.9, 46.3,153.8, 30.6,161.5, 14.7,168.9, -1.5,175.5, -18,181.5, -34.8,186.5, -51.8,190.7, -68.9,194.3, -86.2,197.4, -103.3,200.2, -120.7,203.2, -137.9,206.1, -155.1,209.5, -172.3,213, -189.4,216.4, -206.5,220, -223.6,223.6, -240.9,227.1, -258,230.7, -275.2,234.2, -292.4,237.2, -309.6,240.4, -326.7,244.2, -343.6,249, -359.5,256.1, -374.8,264.6, -390.3,272.6, -406.8,278.9, -423.5,284, -440.8,286.5, -458.3,286.2, -475.5,283.8, -492.8,279.9, -509.1,274, -525.1,266.8, -541.4,260.3, -558.4,256.4, -575.8,255.1, -593.4,255.2, -611,255.5, -628.3,256.3, -645.9,257.5, -663.3,258.9, -680.8,260.2, -698.3,261.4, -715.7,262.4, -733.2,263.4, -750.7,264.4, -768.2,265.3, -785.7,266, -803.1,266.6, -820.6,267.1, -838.1,267.5, -855.6,267.5, -873.2,267.1, -890.6,265.9, -908,263.7, -925.3,260.7, -942.4,257.3, -959.6,253.3, -976.4,249, -993.3,244.4, -1010.3,239.7, -1027,234.9, -1043.9,230.3, -1060.8,225.7, -1077.8,221.6, -1094.8,217.5, -1111.9,213.4, -1128.9,209.3, -1146,205.4, -1163.1,201.3, -1180.1,197.4, -1197.2,193.5, -1214.2,189.6, -1231.4,185.7, -1248.4,181.8, -1265.5,178, -1282.6,174.1, -1299.7,170.3, -1316.7,166.5, -1333.8,162.7, -1351,158.9, -1368,155, -1385.1,151.3, -1402.2,147.5, -1419.3,143.8, -1436.4,140, -1453.5,136.3, -1470.6,132.5, -1487.8,128.7, -1504.9,125, -1521.9,121.2, -1539,117.5, -1556,113.6, -1573.1,109.8, -1590.4,106.3, -1607.6,102.7, -1624.5,98.7, -1641.3,94.1, -1658,88.3, -1673.8,81.2, -1686.2,68.9, -1693.7,53.2, -1697.6,36.2, -1699,18.7, -1702.9,1.7, -1713.4,-12.1, -1728.3,-21.1, -1745.2,-25.7, -1762.4,-28.7, -1779.7,-31.4, -1796.8,-35.1, -1813.7,-39.6, -1829.9,-46.4, -1844.4,-56.1, -1854.7,-70.2, -1859.6,-86.9, -1862.6,-104.2, -1865.1,-121.5, -1867.7,-138.8, -1870.1,-156.2, -1872.5,-173.5, -1874.7,-190.9, -1876.8,-208.3, -1879,-225.7, -1881.1,-243, -1883.2,-260.5, -1885.2,-277.8, -1887.4,-295.2, -1889.6,-312.6, -1891.8,-329.9, -1893.8,-347.2, -1895.2,-364.8, -1896,-382.3, -1892.8,-399.4, -1885.5,-415.2, -1872.1,-426.2, -1855.6,-431.9, -1838.2,-431.8, -1821.8,-425.9, -1808,-415.2, -1799.2,-400.2, -1794.7,-383.4, -1792.9,-365.9, -1791.3,-348.5, -1790,-331.1, -1789,-313.6, -1788,-296.2, -1787,-278.6, -1785.5,-261.2, -1781.9,-244.1, -1771.2,-230.4, -1757,-220.2, -1740.6,-214.3, -1723.3,-211.7, -1705.8,-209.6, -1688.7,-206.4, -1671.6,-202.7, -1654.5,-199, -1637.4,-195.2, -1620.2,-191.6, -1603.1,-187.9, -1586,-184.1, -1569.1,-179.9, -1552.1,-175.2, -1535.3,-170.2, -1518.7,-165, -1502.1,-159.5, -1485.5,-154, -1468.9,-148.1, -1452.3,-142.3, -1435.9,-136.2, -1419.6,-130, -1403.2,-123.9, -1386.8,-117.8, -1370.3,-111.9, -1353.7,-106.1, -1337.2,-100.5, -1320.6,-95, -1303.6,-90.8, -1286.1,-88.9, -1268.8,-89.5, -1251.6,-92.9, -1236,-100.6, -1222.7,-112, -1210.9,-124.9, -1200.5,-139.1, -1190.7,-153.6, -1181.2,-168.2, -1173.1,-183.8, -1166.1,-199.9, -1160.3,-216.4, -1156.2,-233.4, -1154,-250.8, -1154.8,-268.2, -1159.2,-285.1, -1165.4,-301.5, -1172.7,-317.4, -1180.7,-333.1, -1190.3,-347.6, -1201,-361.4, -1212.5,-374.7, -1224.2,-387.8, -1236.1,-400.5, -1248.1,-413.4, -1259.8,-426.3, -1271.1,-439.7, -1282.4,-453.2, -1293.5,-466.6, -1304.8,-480.1, -1315.8,-493.6, -1326.9,-507.2, -1337.9,-520.7, -1348.9,-534.4, -1359.8,-548.1, -1370.6,-561.8, -1381.8,-575.5, -1392.5,-589.1, -1402.1,-603.9, -1408.8,-620, -1411.6,-637.3, -1409.8,-654.6, -1402.9,-670.6, -1392,-684.3, -1378.6,-695.5, -1364.5,-705.8, -1349.8,-715.6, -1336.5,-726.8, -1326,-740.7, -1318.8,-756.7, -1315.5,-773.8, -1317.1,-791.1, -1323.4,-807.5, -1330.5,-823.6, -1338.3,-839.1, -1346.7,-854.6, -1355.5,-869.6, -1364.8,-884.5, -1374.4,-899.2, -1383.7,-914, -1392.7,-929, -1401.2,-944.3, -1408.8,-960.1, -1415.3,-976.3, -1420,-993.1, -1420.6,-1010.7, -1416.1,-1027.4, -1405.7,-1041.5, -1391.4,-1051.5, -1375.7,-1059.2, -1359.7,-1066.3, -1343.6,-1073.4, -1327.4,-1080, -1311.2,-1086.3, -1294.6,-1092.2, -1277.9,-1097.5, -1260.7,-1100.4, -1243.2,-1100.1, -1226.2,-1096.4, -1210.2,-1089.1, -1195.7,-1079.4, -1182.1,-1068.3, -1169.5,-1056.3, -1157.5,-1043.4, -1146.1,-1030.1, -1135.2,-1016.5, -1124.6,-1002.6, -1114.4,-988.4, -1104.8,-973.7, -1095.8,-958.6, -1087.8,-943.1, -1080.5,-927.2, -1074,-911, -1067.9,-894.4, -1062.4,-877.9, -1057.1,-861.3, -1052,-844.6, -1047.3,-827.6, -1042.9,-810.6, -1039.1,-793.6, -1035.9,-776.4, -1033.3,-759.1, -1031.3,-741.6, -1029.9,-724.2, -1028.8,-706.7, -1028.2,-689.1, -1027.8,-671.7, -1027.5,-654.2, -1027,-636.7, -1027,-619.2, -1027.3,-601.7, -1027.9,-584.1, -1028.3,-566.7, -1028.2,-549.1, -1027.5,-531.6, -1026.2,-514.2, -1024.7,-496.7, -1022.2,-479.5, -1018.5,-462.3, -1012.9,-445.8, -1005.6,-429.8, -997.3,-414.5, -988.3,-399.4, -979.7,-384.1, -970.8,-369.1, -961.5,-354.3, -951.7,-339.6, -941.4,-325.5, -930.6,-311.8, -919.6,-298.2, -908.3,-284.8, -896.6,-271.7, -884.6,-259, -872.3,-246.5, -859.6,-234.4, -846.6,-222.7, -832.6,-212.2, -817.1,-204.3, -800.5,-198.8, -783.5,-194.7, -766.2,-191.7, -748.8,-189.8, -731.3,-188.5, -713.9,-187.3, -696.5,-185.6, -679,-183.9, -661.5,-182.1, -644.2,-180.3, -626.8,-178.3, -609.4,-175.8, -592.2,-172.7, -575.1,-168.7, -558.4,-163.6, -541.8,-158.1, -525.3,-152.5, -508.9,-146.4, -492.5,-140, -476.2,-133.6, -459.9,-127.2, -443.5,-120.9, -427.2,-114.7, -410.9,-108.4, -394.5,-102.1, -378.2,-95.8, -362,-89.3, -345.8,-82.6, -329.7,-75.5, -314.3,-67.4, -305.9,-52.8, -313.7,-38, -325.4,-25, -331,-8.8, -322,5.2, -305,8.3, -287.4,7.4, -270,6.3, -252.5,5.1, -235.1,4, -217.6,2.9, -200.1,2, -182.6,1.4, -165,1, -147.6,0.6, -130.1,0.4, -112.5,0.3, -95.1,0.1, -77.5,0];
+// Relevo: altura (m; a linha de largada é o zero) por fração da volta, seguindo o mapa de elevação do circuito: a reta
+// dos boxes sobe de leve até La Source; dali DESCE até a Eau Rouge, sobe o Raidillon e a reta Kemmel até Les Combes (ponto
+// mais alto, 470 m), desce por Rivage, Pouhon e Fagnes até Stavelot / Paul Frère (ponto mais baixo, 373 m) e volta a subir
+// por Blanchimont até a chicane. As chaves ficam nas curvas de verdade do traçado.
+const SPA_ELEV = [[0, 0], [0.0441, 7], [0.0572, 6.5], [0.1367, -24], [0.1789, 12], [0.2261, 26], [0.3288, 67], [0.362, 64], [0.4264, 42], [0.4694, 28], [0.528, 6], [0.5695, -6], [0.6246, -18], [0.6869, -29], [0.727, -30], [0.8257, -20], [0.8701, -12], [0.9481, -3], [1, 0]];
+// eixo em amostras de 0,5 m (Catmull-Rom fechada pelos pontos)
+function spaRaw(raw) {
+  const n = SPA_PTS.length / 2, P = i => { i = ((i % n) + n) % n; return [SPA_PTS[i * 2], SPA_PTS[i * 2 + 1]]; };
+  for (let i = 0; i < n; i++) {
+    const a = P(i - 1), b = P(i), c = P(i + 1), d = P(i + 2), m = Math.max(1, Math.round(Math.hypot(c[0] - b[0], c[1] - b[1]) / 0.5));
+    for (let k = 0; k < m; k++) {
+      const t = k / m, t2 = t * t, t3 = t2 * t, w0 = -0.5 * t3 + t2 - 0.5 * t, w1 = 1.5 * t3 - 2.5 * t2 + 1, w2 = -1.5 * t3 + 2 * t2 + 0.5 * t, w3 = 0.5 * t3 - 0.5 * t2;
+      raw.push([a[0] * w0 + b[0] * w1 + c[0] * w2 + d[0] * w3, a[1] * w0 + b[1] * w1 + c[1] * w2 + d[1] * w3]);
+    }
+  }
+}
+function spaElev(f) {
+  const E = SPA_ELEV; let q = 1; while (q < E.length - 1 && E[q][0] < f) q++;
+  const a = E[q - 1], b = E[q], t = sat((f - a[0]) / (b[0] - a[0]));
+  return a[1] + (b[1] - a[1]) * (0.5 - 0.5 * Math.cos(t * PI));
+}
+// trechos em curva tirados da curvatura suavizada (kb), no formato que zebras, brita, pneus e adereços esperam
+function spaSegs(kb) {
+  const N = TRK.N, ds = TRK.ds, TH = 1 / 260; let i = 0;
+  while (i < N) {
+    if (Math.abs(kb[i]) < TH) { i++; continue; }
+    const sg = Math.sign(kb[i]); let j = i, ang = 0;
+    while (j < N && Math.abs(kb[j]) >= TH && Math.sign(kb[j]) === sg) { ang += kb[j] * ds; j++; }
+    const len = (j - i) * ds, deg = ang * 180 / PI;
+    if (len > 10 && Math.abs(deg) > 8) TRK.segs.push({ type: 'A', s0: i * ds, s1: j * ds, k: ang / len, name: '', R: len / Math.abs(ang), ang: deg });
+    i = j;
+  }
+}
+// relevo regional: média das alturas da pista ponderada pela distância (o terreno acompanha o circuito, sem aterros enormes)
+function spaReg(x, z) {
+  const R = TRK.reg; let sw = 0, sh = 0;
+  for (let i = 0; i < R.length; i += 3) { const dx = x - R[i], dz = z - R[i + 1], q = dx * dx + dz * dz + 8100, w = 1 / (q * q); sw += w; sh += w * R[i + 2]; }
+  return sh / sw;
 }
 
 // ---- 11_worldmap.js
@@ -4138,11 +4222,15 @@ const CS = {
   VF: [0, 0.36, 0.42, 0.60, 0.68, 1],
   ARCH_R: 0.318, ARCH_Y: 0.295,
 };
+// Carro em construção: null = Uno (os números deste arquivo); senão a definição de um carro extra (30_car_e_extras.js),
+// que troca o perfil, a planta, as janelas e as luzes. A pele paramétrica e os recortes são os mesmos.
+let CK = null;
 const csq = x => x * x;
 function csmin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
 function csmax(a, b, k) { return -csmin(-a, -b, k); }
 // perfil superior no plano de borda: capô, para-brisa, teto, vigia, tampa, frente
 function carYT(x) {
+  if (CK) return CK.yt(x);
   const fascia = 0.765 - 4.3 * (x - 1.752);
   const hood = 0.96 - 0.1806 * (x - 0.672) + 0.012 * (1 - csq((x - 1.21) / 0.54));
   const wind = 0.96 - 0.81 * (x - 0.672);
@@ -4154,13 +4242,13 @@ function carYT(x) {
   return y;
 }
 // abaulamento em planta: o centro fica mais à frente (para-brisa, frente) ou mais atrás (traseira) que as bordas
-function carBulge(x) { return 0.055 * smooth(-0.15, 0.25, x) - 0.036 * smooth(-1.15, -1.42, x); }
-function carCrown(x) { return 0.02 * smooth(0.62, 0.9, x) * smooth(1.8, 1.7, x) + 0.032 * smooth(0.2, -0.1, x) * smooth(-1.5, -1.3, x); }
+function carBulge(x) { if (CK) return CK.bulge(x); return 0.055 * smooth(-0.15, 0.25, x) - 0.036 * smooth(-1.15, -1.42, x); }
+function carCrown(x) { if (CK) return CK.crown(x); return 0.02 * smooth(0.62, 0.9, x) * smooth(1.8, 1.7, x) + 0.032 * smooth(0.2, -0.1, x) * smooth(-1.5, -1.3, x); }
 function carYtop(x, z) {
   const zz = z / 0.72, xi = carBulge(x) * (1 - zz * zz);
   let y = carYT(x - xi) - carCrown(x) * zz * zz;
   // ressalto central do capô (dois vincos que convergem para a frente)
-  if (x > 0.6) {
+  if (!CK && x > 0.6) {
     // (posição medida na foto de frente: ~0,51 m do eixo junto ao para-brisa, ~0,37 m na frente; degrau de 9 mm com aresta viva)
     const zc = 0.515 - 0.145 * sat((x - 0.72) / 1.03);
     y += 0.0095 * (1 - smooth(zc - 0.0065, zc + 0.0065, z)) * smooth(0.77, 0.9, x - xi) * smooth(1.78, 1.70, x - xi);
@@ -4168,11 +4256,13 @@ function carYtop(x, z) {
   return y;
 }
 function carWPlan(x) {
+  if (CK) return CK.wplan(x);
   const t = sat((x - 0.55) / 1.3), t2 = sat((-0.85 - x) / 0.82);
   return 0.774 - 0.082 * t * t - 0.05 * t2 * t2;
 }
 // lateral inferior: meia largura em função da altura (bojo, faixa rebaixada, lábio das caixas de roda, dobra da soleira)
 function carZL(x, y) {
+  if (CK) return CK.zl(x, y);
   let z = carWPlan(x);
   const d = y - 0.63; z -= d < 0 ? 0.03 * csq(d / 0.43) : 0.022 * csq(d / 0.30);
   z -= 0.003 * smooth(0.44, 0.53, y) * (1 - smooth(0.585, 0.675, y));   // transições largas: sem brilho ondulado na malha
@@ -4181,8 +4271,9 @@ function carZL(x, y) {
   if (da < 0.3) z += 0.0024 * Math.exp(-csq((da - 0.01) / 0.1));
   return z;
 }
-function carBeltN(x) { return 0.922 + 0.005 * (0.67 - x); }
+function carBeltN(x) { if (CK) return CK.belt(x); return 0.922 + 0.005 * (0.67 - x); }
 function carR2(x) {
+  if (CK) return CK.r2(x);
   // raio do canto superior: ombro do capô, coluna A, teto, coluna C, canto traseiro, canto dianteiro
   let r = 0.045;
   r = lerp(r, 0.024, smooth(-0.05, 0.2, x));       // coluna A
@@ -4251,6 +4342,7 @@ function carSkin(x, v, off, out) {
 // tabela u <-> x por comprimento de arco do perfil (u = 0 na frente, 1 atrás)
 const CAR_UT = { n: 800, x: null, s: null, L: 0 };
 function carShapeInit() {
+  for (let i = 0; i < 8; i++) _stCache[i].x = NaN;   // o cache de estações vale para um carro só
   const n = CAR_UT.n, xs = CAR_UT.x = new Float64Array(n + 1), ss = CAR_UT.s = new Float64Array(n + 1);
   let px = CS.XF, py = carYT(px), acc = 0;
   for (let i = 0; i <= n; i++) {
@@ -4278,15 +4370,17 @@ function carArchF(P) {
 const CW = { apx: 0, apy: 0, anx: 0, any: 0, cpx: 0, cpy: 0, cnx: 0, cny: 0, roofA: 0, roofB: 0, roofC: 0 };
 function carWindowsInit() {
   // linha da coluna A: pelos cantos superiores da parede em duas estações do para-brisa
-  const a = carStation(0.60), ax = 0.60, ay = a.yE, b = carStation(0.20), bx = 0.20, by = b.yE;
+  const W = CK ? CK.win : null, ax = W ? W.a0 : 0.60, bx = W ? W.a1 : 0.20, cx = W ? W.c0 : -1.40, dx = W ? W.c1 : -1.54;
+  const a = carStation(ax), ay = a.yE, b = carStation(bx), by = b.yE;
   let nx = -(by - ay), ny = (bx - ax); let l = Math.hypot(nx, ny); nx /= l; ny /= l; if (ny > 0) { nx = -nx; ny = -ny; }   // normal apontando para baixo/trás (dentro da janela)
   CW.apx = ax; CW.apy = ay; CW.anx = nx; CW.any = ny;
-  const c = carStation(-1.40), cx = -1.40, cy = c.yE, d = carStation(-1.54), dx = -1.54, dy = d.yE;
+  const c = carStation(cx), cy = c.yE, d = carStation(dx), dy = d.yE;
   nx = -(dy - cy); ny = (dx - cx); l = Math.hypot(nx, ny); nx /= l; ny /= l; if (nx < 0) { nx = -nx; ny = -ny; }             // normal apontando para a frente
   CW.cpx = cx; CW.cpy = cy; CW.cnx = nx; CW.cny = ny;
 }
-function carRoofEdgeY(x) { return carStation(clamp(x, -1.33, 0.1)).yE; }
+function carRoofEdgeY(x) { if (CK) return carStation(clamp(x, CK.win.re0, CK.win.re1)).yE; return carStation(clamp(x, -1.33, 0.1)).yE; }
 function carWinDoor(P) {
+  if (CK) return carWinG(P, 0);
   const x = P[0], y = P[1];
   const bottom = (carBeltN(x) + 0.014) - y;
   const top = y - (carRoofEdgeY(x) - 0.04);
@@ -4295,6 +4389,7 @@ function carWinDoor(P) {
   return csmax(csmax(bottom, top, 0.03), csmax(front, rear, 0.03), 0.035);
 }
 function carWinQuarter(P) {
+  if (CK) return carWinG(P, 1);
   const x = P[0], y = P[1];
   const bottom = (carBeltN(x) + 0.014) - y;
   const top = y - (carRoofEdgeY(x) - 0.04);
@@ -4305,28 +4400,32 @@ function carWinQuarter(P) {
 // para-brisa: sobre a superfície do topo, em coordenadas (x deslocado pelo abaulamento, z)
 function carXe(P) { const zz = P[2] / 0.72; return P[0] - carBulge(P[0]) * (1 - zz * zz); }
 function carWindshield(P) {
+  if (CK) return carGlassG(P, 0);
   const xe = carXe(P), st = carStation(P[0]);
   const lo = xe - 0.648, hi = 0.162 - xe, side = P[2] - (st.zE - 0.047);
   return P[0] < 0 ? 1 : csmax(csmax(lo, hi, 0.03), side, 0.06);
 }
 function carHatchGlass(P) {
+  if (CK) return carGlassG(P, 1);
   const st = carStation(P[0]), y = P[1];
   const lo = 1.0 - y, hi = y - 1.352, side = P[2] - (st.zE - 0.072);
   return P[0] > -1.2 ? 1 : csmax(csmax(lo, hi, 0.03), side, 0.06);
 }
 function carRRect(a, b, ha, hb, r) { const qa = Math.abs(a) - ha + r, qb = Math.abs(b) - hb + r; return Math.hypot(Math.max(qa, 0), Math.max(qb, 0)) + Math.min(Math.max(qa, qb), 0) - r; }
 const CL = { hlZ0: 0.378, hlZ1: 0.607, lY: 0.693, lH: 0.062, clZ: 0.6135, clX: 1.735 };   // farol + pisca âmbar FRONTAL ao lado (z > clZ), que dobra a quina
-function carHeadlight(P) { return carRRect(P[2] - (CL.hlZ0 + CL.hlZ1) / 2, P[1] - CL.lY, (CL.hlZ1 - CL.hlZ0) / 2, CL.lH, 0.012); }
+function carHeadlight(P) { if (CK) return CK.headlight(P); return carRRect(P[2] - (CL.hlZ0 + CL.hlZ1) / 2, P[1] - CL.lY, (CL.hlZ1 - CL.hlZ0) / 2, CL.lH, 0.012); }
 function carCornerLamp(P, v) {
   const g = v > 0.64 ? CL.clZ - P[2] : CL.clX - P[0];
   return Math.max(Math.abs(P[1] - CL.lY) - CL.lH, g);
 }
 function carGrille(P) {
+  if (CK) return CK.grille(P);
   const z = P[2], y = P[1];
   return carRRect(z, y - 0.694, 0.356, 0.0475, 0.008);   // abertura única; a barra central na cor do carro é uma peça à parte
 }
 const CT = { z0: 0.497, y0: 0.584, y1: 0.822 };   // lanterna quase quadrada, colada ao para-choque, contornando a quina
 function carTailLamp(P, v) {
+  if (CK) return CK.tail(P);
   // face traseira (x atrás de -1,572) + dobra de ~4 cm pela lateral
   // face traseira + dobra de largura constante (~5,5 cm) pela lateral, paralela à aresta traseira inclinada
   return Math.max(carRRect(0, P[1] - (CT.y0 + CT.y1) / 2, 1, (CT.y1 - CT.y0) / 2, 0.012), CT.z0 - P[2], P[0] - (-1.585 + (P[1] - 0.93) / 6.2 + 0.055));
@@ -4334,6 +4433,7 @@ function carTailLamp(P, v) {
 // ---------- distância às linhas de junção (portas, capô, tampa) — vai em uv.x e vira linha escura no shader ----------
 const CSEAM = { door: null };
 function carSeamInit() {
+  if (CK) { CSEAM.door = carSeamDoorG(); return; }
   const p = [[0.74, 0.215], [0.74, 0.92], [0.722, 0.95]];
   for (let x = 0.66; x >= -0.41; x -= 0.045) p.push([x, carStation(x).yE - (x > 0.1 ? 0.03 : 0.024)]);
   p.push([-0.418, carStation(-0.418).yE - 0.024]); p.push([-0.418, 0.215]); p.push([0.74, 0.215]);
@@ -4344,7 +4444,8 @@ function carSegDist(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, 
 // (interpola certo entre vértices; o shader desenha a linha onde |d| ≈ 0)
 function carSeam(P, v) {
   const x = P[0], y = P[1], z = P[2]; let d = 1;
-  if (v < 0.66 && x > -0.7 && x < 1.0) {
+  const S = CK ? CK.seam : null;
+  if (v < 0.66 && x > (S ? S.xr - 0.28 : -0.7) && x < (S ? S.xf + 0.26 : 1.0)) {
     const p = CSEAM.door; let m = 1e9, inside = false;
     for (let i = 0; i < p.length - 1; i++) {
       const a = p[i], b = p[i + 1]; m = Math.min(m, carSegDist(x, y, a[0], a[1], b[0], b[1]));
@@ -4352,6 +4453,7 @@ function carSeam(P, v) {
     }
     d = Math.min(d, inside ? -m : m);
   }
+  if (S) return v > 0.6 ? Math.min(d, carSeamTopG(P)) : d;
   if (v > 0.6) {
     const xe = carXe(P), st = carStation(x);
     if (xe > 0.5) d = Math.min(d, Math.max(z - (st.zE - 0.058), 0.745 - xe, xe - 1.742));     // capô
@@ -4464,6 +4566,7 @@ function carPath(pts) {
 // x da superfície do topo (frente ou traseira) em (z, y)
 function carTopX(z, y, rear) {
   let a = rear ? -1.76 : 1.6, b = rear ? -1.35 : 1.95;
+  if (CK) { a = rear ? CS.XR - 0.07 : CS.XF - 0.28; b = rear ? CS.XR + 0.34 : CS.XF + 0.08; }
   for (let i = 0; i < 40; i++) { const m = (a + b) / 2, f = carYtop(m, z) - y; if ((f > 0) === !rear) a = m; else b = m; }
   return (a + b) / 2;
 }
@@ -4558,7 +4661,38 @@ function carBuildParts(mb, gl) {
   mb.pop(); mb.pop();
   mb.mat(CM.PLASTIC).color(0.013, 0.013, 0.014);
   mb.rbox(0.596, 0.994, 0.742, 0.13, 0.085, 0.02, 0.008, 2);
-  // ================= interior (metade direita; espelhado) =================
+  carInteriorHalf(mb);
+  // ================= rack de teto (pés) =================
+  mb.mat(CM.STEEL).color(0.03, 0.03, 0.032);
+  for (const xb of [CRK.x0, CRK.x1]) {
+    const st = carStation(xb);
+    mb.rbox(xb, st.yE + 0.045, st.zE - 0.035, 0.075, 0.07, 0.06, 0.012, 2);
+    mb.push(m4translate(m4(), xb, st.yE - 0.012, st.zE + 0.012)); mb.push(m4rotX(m4(), 0.34)); mb.box(0, 0, 0, 0.06, 0.07, 0.006); mb.pop(); mb.pop();
+  }
+  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
+  // ======================= peças não simétricas =======================
+  // barras do rack + escada + cintas
+  mb.mat(CM.STEEL).color(0.035, 0.035, 0.038);
+  for (const xb of [CRK.x0, CRK.x1]) mb.rbox(xb, CRK.barY, 0, 0.036, 0.028, 1.2, 0.006, 2);
+  carLadder(mb);
+  // limpadores
+  carWipers(mb);
+  carExhaust(mb);
+  carInteriorFull(mb);
+  // emblema dianteiro: cinco barras cromadas inclinadas sobrepostas ao centro da grade (ocupam a altura das duas fendas)
+  {
+    const y = 0.694, x = carTopX(0, y, false), xu = carTopX(0, y + 0.02, false), sl = (xu - x) / 0.02, l = Math.hypot(1, sl);
+    const B = m4basis(m4(), 0, 0, -1, sl / l, 1 / l, 0, 1 / l, -sl / l, 0, x + 0.002, y, 0);
+    mb.mat(CM.CHROME, 2).color(0.93, 0.93, 0.95); mb.push(B);
+    const sh = m4(); sh[4] = 0.3;
+    mb.push(sh); for (let i = 0; i < 5; i++) mb.rbox((i - 2) * 0.0165, 0, 0.004, 0.0072, 0.09, 0.008, 0.002, 2); mb.pop(); mb.pop();
+  }
+  // placas e emblemas traseiros (decalques do atlas)
+  carDecals(mb);
+}
+// interior, metade direita (o chamador espelha): assoalho, painel, bancos e tampão
+// rs: recuo extra do banco traseiro e do tampão (carros de cabine mais curta)
+function carInteriorHalf(mb, rs) {
   mb.mat(CM.INTERIOR).color(0.05, 0.05, 0.055);
   mb.quad(-0.86, 0.235, 0.72, 0.85, 0.235, 0.72, 0.85, 0.235, 0, -0.86, 0.235, 0);
   mb.quad(-1.33, 0.235, 0.5, -0.86, 0.235, 0.5, -0.86, 0.235, 0, -1.33, 0.235, 0);   // ao lado das rodas traseiras o carpete é estreito (o plano inteiro atravessava a calota: risco fino horizontal)
@@ -4585,30 +4719,23 @@ function carBuildParts(mb, gl) {
   mb.mat(CM.STEEL).color(0.3, 0.3, 0.3); mb.cyl(0, 0.58, -0.06, 0.006, 0.64, 0.006, 6); mb.cyl(0, 0.58, 0.06, 0.006, 0.64, 0.006, 6);
   mb.pop(); mb.pop();
   // banco traseiro (inteiriço) e tampão
+  if (rs) mb.push(m4translate(m4(), rs, 0, 0));
   mb.mat(CM.INTERIOR, 4).color(0.07, 0.072, 0.08);
   mb.rbox(-0.93, 0.45, 0.31, 0.46, 0.15, 0.62, 0.055, 4);
   mb.push(m4translate(m4(), -1.16, 0.5, 0.31)); mb.push(m4rotZ(m4(), 0.36)); mb.rbox(0, 0.25, 0, 0.12, 0.52, 0.62, 0.05, 4); mb.pop(); mb.pop();
   mb.mat(CM.INTERIOR).color(0.04, 0.04, 0.045); mb.box(-1.40, 0.925, 0.3, 0.28, 0.02, 0.6);
-  // ================= rack de teto (pés) =================
-  mb.mat(CM.STEEL).color(0.03, 0.03, 0.032);
-  for (const xb of [CRK.x0, CRK.x1]) {
-    const st = carStation(xb);
-    mb.rbox(xb, st.yE + 0.045, st.zE - 0.035, 0.075, 0.07, 0.06, 0.012, 2);
-    mb.push(m4translate(m4(), xb, st.yE - 0.012, st.zE + 0.012)); mb.push(m4rotX(m4(), 0.34)); mb.box(0, 0, 0, 0.06, 0.07, 0.006); mb.pop(); mb.pop();
-  }
-  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
-  // ======================= peças não simétricas =======================
-  // barras do rack + escada + cintas
-  mb.mat(CM.STEEL).color(0.035, 0.035, 0.038);
-  for (const xb of [CRK.x0, CRK.x1]) mb.rbox(xb, CRK.barY, 0, 0.036, 0.028, 1.2, 0.006, 2);
-  carLadder(mb);
-  // limpadores
-  carWipers(mb);
+  if (rs) mb.pop();
+}
+// escapamento
+function carExhaust(mb) {
   // escapamento: silencioso transversal (aço fosco) + ponteira curta saindo para trás, como na foto
   mb.mat(CM.STEEL, 1).color(0.03, 0.03, 0.032);
   mb.push(m4translate(m4(), -1.43, 0.272, 0.0)); mb.push(m4rotX(m4(), PI / 2)); mb.cyl(0, 0, 0, 0.062, 0.34, 0.062, 20, true, true); mb.pop(); mb.pop();
   mb.mat(CM.STEEL, 1).color(0.035, 0.035, 0.038);
   mb.tube([[-1.44, 0.268, -0.2], [-1.56, 0.26, -0.2], [-1.705, 0.256, -0.2]], 0.019, 10);   // ponteira curta, escura, reta para trás
+}
+// interior, peças sem simetria: coluna do volante, retrovisor interno, câmbio, freio de mão e piloto
+function carInteriorFull(mb) {
   // volante: coluna fixa
   mb.mat(CM.INTERIOR, 3).color(0.04, 0.04, 0.045);
   mb.tube([[0.36, 0.875, -0.36], [0.56, 0.80, -0.36]], 0.03, 10);
@@ -4639,16 +4766,6 @@ function carBuildParts(mb, gl) {
     mb.mat(CM.GLOSS, 1).color(0.01, 0.011, 0.014);
     mb.rbox(-0.2, 1.178, zd, 0.13, 0.08, 0.233, 0.034, 5);        // viseira: faixa escura que envolve a frente e os lados do casco
   }
-  // emblema dianteiro: cinco barras cromadas inclinadas sobrepostas ao centro da grade (ocupam a altura das duas fendas)
-  {
-    const y = 0.694, x = carTopX(0, y, false), xu = carTopX(0, y + 0.02, false), sl = (xu - x) / 0.02, l = Math.hypot(1, sl);
-    const B = m4basis(m4(), 0, 0, -1, sl / l, 1 / l, 0, 1 / l, -sl / l, 0, x + 0.002, y, 0);
-    mb.mat(CM.CHROME, 2).color(0.93, 0.93, 0.95); mb.push(B);
-    const sh = m4(); sh[4] = 0.3;
-    mb.push(sh); for (let i = 0; i < 5; i++) mb.rbox((i - 2) * 0.0165, 0, 0.004, 0.0072, 0.09, 0.008, 0.002, 2); mb.pop(); mb.pop();
-  }
-  // placas e emblemas traseiros (decalques do atlas)
-  carDecals(mb);
 }
 const CRK = { x0: 0.0, x1: -0.98, barY: 1.47, railZ: 0.205, lx0: -1.98, lx1: 1.22 };
 function carLadder(mb) {
@@ -4678,18 +4795,20 @@ function carLadder(mb) {
     mb.mat(CM.STRAP).color(0.85, 0.28, 0.02); mb.box(xb, y1 + 0.004, -0.06, 0.036, 0.004, 0.14);
   }
 }
-function carWipers(mb) {
+function carWipers(mb, dx, noRear) {
+  dx = dx || 0;
   const wip = (zp, z1, xe0, lift) => {
     // braço do pivô até o meio da palheta; palheta deitada na base do para-brisa
     const P = (z, xe) => { const zz = z / 0.72, x = xe + carBulge(xe) * (1 - zz * zz); return [x, carYtop(x, z) + 0.016, z]; };
     mb.mat(CM.RUBBER).color(0.015, 0.015, 0.015);
-    const zm = (zp + z1) / 2, a = P(zp, 0.69), m = P(zm + (z1 - zp) * 0.1, xe0 - lift * 0.5);
+    const zm = (zp + z1) / 2, a = P(zp, 0.69 + dx), m = P(zm + (z1 - zp) * 0.1, xe0 - lift * 0.5);
     mb.rbox(a[0], a[1] - 0.004, a[2], 0.03, 0.022, 0.03, 0.008, 2);
     mb.sweep([a, [(a[0] + m[0]) / 2, (a[1] + m[1]) / 2 + 0.006, (a[2] + m[2]) / 2], m], [[-0.006, -0.003], [0.006, -0.003], [0.006, 0.003], [-0.006, 0.003]], { closedProfile: true, hard: true });
     const pts = []; for (let k = 0; k <= 8; k++) { const z = lerp(zp + (z1 - zp) * 0.12, z1, k / 8); pts.push(P(z, lerp(xe0, xe0 - lift, k / 8))); }
     mb.sweep(pts, [[-0.007, -0.008], [0.007, -0.008], [0.004, 0.006], [-0.004, 0.006]], { closedProfile: true, hard: true });
   };
-  wip(0.30, -0.22, 0.655, 0.03); wip(-0.24, -0.66, 0.655, 0.05);
+  wip(0.30, -0.22, 0.655 + dx, 0.03); wip(-0.24, -0.66, 0.655 + dx, 0.05);
+  if (noRear) return;
   // limpador traseiro
   mb.mat(CM.RUBBER).color(0.015, 0.015, 0.015);
   const PR = (z, y) => { const x = carTopX(z, y, true); return [x - 0.016, y + 0.006, z]; };
@@ -4730,6 +4849,11 @@ const CGLYPH = {
   1: [[[0.12, 0.74], [0.42, 1], [0.42, 0]]], 9: [[[0.7, 0.62], [0.55, 0.46], [0.3, 0.46], [0.1, 0.6], [0.1, 0.85], [0.3, 1], [0.52, 1], [0.7, 0.85], [0.7, 0.3], [0.55, 0.05], [0.3, 0], [0.12, 0.1]]],
   6: [[[0.66, 0.9], [0.5, 1], [0.3, 1], [0.12, 0.82], [0.1, 0.3], [0.25, 0.03], [0.5, 0], [0.68, 0.15], [0.7, 0.4], [0.52, 0.56], [0.3, 0.56], [0.12, 0.42]]],
   '-': [[[0.1, 0.48], [0.5, 0.48]]],
+  C: [[[0.72, 0.82], [0.56, 0.96], [0.4, 1], [0.2, 0.94], [0.04, 0.74], [0, 0.5], [0.04, 0.26], [0.2, 0.06], [0.4, 0], [0.56, 0.04], [0.72, 0.18]]],
+  G: [[[0.72, 0.82], [0.56, 0.96], [0.4, 1], [0.2, 0.94], [0.04, 0.74], [0, 0.5], [0.04, 0.26], [0.2, 0.06], [0.4, 0], [0.56, 0.04], [0.72, 0.18], [0.74, 0.46], [0.44, 0.46]]],
+  H: [[[0, 0], [0, 1]], [[0.76, 0], [0.76, 1]], [[0, 0.52], [0.76, 0.52]]], V: [[[0, 1], [0.4, 0], [0.8, 1]]], L: [[[0, 1], [0, 0], [0.68, 0]]],
+  7: [[[0.08, 1], [0.7, 1], [0.3, 0]]],
+  8: [[[0.4, 0.52], [0.16, 0.62], [0.1, 0.78], [0.2, 0.94], [0.4, 1], [0.6, 0.94], [0.7, 0.78], [0.64, 0.62], [0.4, 0.52], [0.14, 0.4], [0.06, 0.22], [0.16, 0.06], [0.4, 0], [0.64, 0.06], [0.74, 0.22], [0.66, 0.4], [0.4, 0.52]]],
 };
 const CADV = { I: 0.45, i: 0.3, l: 0.3, M: 1.12, '-': 0.6, 1: 0.7, e: 0.82 };
 function carText(g, txt, x, y, h, lw, skew) {
@@ -4773,6 +4897,7 @@ function carAtlas() {
   }
   const xe = xs + 4;
   g.strokeStyle = '#d0281a'; carText(g, 'EP', xe + 20, 190, 86, 16, 0.24);
+  if (typeof carAtlasExtras === 'function') carAtlasExtras(g);
   const im = g.getImageData(0, 0, W, H);
   const tex = mkTex(W, H, 'rgba8unorm-srgb', TU.RT | TU.TB | TU.CD, { mipLevelCount: 6 });
   G.dev.queue.writeTexture({ texture: tex }, im.data, { bytesPerRow: W * 4 }, [W, H]);
@@ -4780,7 +4905,7 @@ function carAtlas() {
   return tex;
 }
 // ---------- roda (eixo Z local; face externa em +Z) ----------
-function carBuildWheel(mb, mbBlur) {
+function carBuildWheel(mb, mbBlur, style) {
   mb.push(m4rotY(m4(), -PI / 2));    // X local do torno → +Z
   mb.push(m4translate(m4(), -0.015, 0, 0));   // roda 1,5 cm para dentro: a face externa do pneu fica atrás do lábio do para-lama
   const R = CAR.wheelR, hw = 0.0725, seg = 72;
@@ -4799,6 +4924,7 @@ function carBuildWheel(mb, mbBlur) {
   mb.mat(CM.STEEL, 1).color(0.035, 0.035, 0.038);
   mb.lathe([[0.058, 0.168], [0.062, 0.171], [0.064, 0.168], [0.062, 0.164], [0.04, 0.16], [0.03, 0.13], [0.03, 0.0]], 40);
   mb.lathe([[-0.02, 0.0], [-0.02, 0.1], [-0.05, 0.158], [-0.06, 0.166], [-0.058, 0.168]], 32);
+  if (style) { carWheelFace(mb, style); mb.pop(); mb.pop(); return; }
   // calota prateada com 14 rasgos radiais
   mb.mat(CM.HUBCAP).color(0.62, 0.63, 0.65);
   const NS = 16, prof = r => { const t = r / 0.166; return 0.0715 - 0.021 * t * t - 0.004 * smooth(0.028, 0.036, r) + 0.004 * smooth(0.06, 0.09, r) - 0.004 * smooth(0.15, 0.166, r); };
@@ -4836,16 +4962,20 @@ const CAR = {
     const fam = CAR.fam = mkFamily('car', { src: 'mat_car', noCube: true });
     CAR.slotBody = objSlot(); for (let i = 0; i < 4; i++) CAR.slotWheel[i] = objSlot(); CAR.slotSteer = objSlot();
     const set = CAR.set = new MeshSet(fam), glass = CAR.glass = new GlassSet();
-    const mb = new MeshBuilder(1 << 17), gl = new MeshBuilder(1 << 14);
-    carBuildBody(mb, gl);
-    if (typeof carBuildParts === 'function') carBuildParts(mb, gl);
-    CAR.tris = mb.ni / 3 + gl.ni / 3;
-    set.add(mb.upload(), CAR.slotBody, 3); glass.add_(gl.upload(), CAR.slotBody);
-    if (typeof carBuildWheel === 'function') {
-      const w = new MeshBuilder(1 << 15), wb = new MeshBuilder(1 << 11); carBuildWheel(w, wb); const wm = w.upload(), wbm = wb.upload(); CAR.tris += 4 * (w.ni + wb.ni) / 3;
-      for (let i = 0; i < 4; i++) { set.add(wm, CAR.slotWheel[i], 3); set.add(wbm, CAR.slotWheel[i], 1); }   // disco de borrão: só no passe principal
+    const sb = new MeshBuilder(1 << 12); carBuildSteer(sb); const steer = sb.upload();
+    // uma malha por carro (CARDEFS); todos usam os mesmos slots, e CAR.select troca as listas de desenho
+    for (let c = 0; c < CARDEFS.length; c++) {
+      const D = CARDEFS[c], mb = new MeshBuilder(1 << 17), gl = new MeshBuilder(1 << 14), w = new MeshBuilder(1 << 15), wb = new MeshBuilder(1 << 11);
+      carBuildCar(c, mb, gl, w, wb);
+      if (!c) CAR.tris = mb.ni / 3 + gl.ni / 3 + 4 * (w.ni + wb.ni) / 3 + sb.ni / 3;
+      set.items = []; glass.items = [];
+      set.add(mb.upload(), CAR.slotBody, 3); glass.add_(gl.upload(), CAR.slotBody);
+      const wm = w.upload(), wbm = wb.ni ? wb.upload() : null;
+      for (let i = 0; i < 4; i++) { set.add(wm, CAR.slotWheel[i], 3); if (wbm) set.add(wbm, CAR.slotWheel[i], 1); }   // disco de borrão: só no passe principal
+      set.add(steer, CAR.slotSteer, 3);
+      D.items = set.items; D.glassItems = glass.items; D.steerMat = m4mul(m4(), m4translate(m4(), D.dx, D.dy, 0), CAR.steerMat);
     }
-    if (typeof carBuildSteer === 'function') { const s = new MeshBuilder(1 << 12); carBuildSteer(s); CAR.tris += s.ni / 3; set.add(s.upload(), CAR.slotSteer, 3); }
+    CAR.select(0);
     const tex = typeof carAtlas === 'function' ? carAtlas() : mkTex(4, 4, 'rgba8unorm-srgb');
     // desenhável: liga o atlas (grupo 3) e não entra no mapa de sombras estático do mundo
     R.drawables.push({ draw(pass, ctx) {
@@ -4857,6 +4987,9 @@ const CAR = {
     m4ident(CAR._t); CAR.place(CAR._t, CAR._z4, CAR._z4); CAR.place(CAR._t, CAR._z4, CAR._z4);
   },
   _z4: new Float32Array(4),
+  // carro em uso (índice em CARDEFS): troca as malhas desenhadas, os cubos das rodas e a posição do volante
+  cur: 0,
+  select(i) { const D = CARDEFS[i]; CAR.cur = i; CAR.set.items = D.items; CAR.glass.items = D.glassItems; CAR.hubs = D.hubs; CAR.steerMat = D.steerMat; },
   // escreve as matrizes de todos os slots (e guarda as anteriores para os vetores de movimento). Sem alocação.
   // steer (ângulo das rodas dianteiras, + = direita) e ângulo do volante vêm de CAR.inp[0..1]: nenhum número passa por
   // argumento (o V8 poria cada um em caixa na heap a cada chamada).
@@ -4887,10 +5020,284 @@ BUILD.push(async () => {
   CAR.build();
   if (GAME.mode === 'car') {
     buildTestGround();
-    GAME.init = () => { setCamera(3.3, 1.25, -3.6, 0.1, 0.62, 0, 0.5); R.cube.pos.set([0, 0.9, 0]); };
+    const c = Math.min(CARDEFS.length - 1, +(Q.get('car') || 0)), D = CARDEFS[c]; CAR.select(c); CAR.place(CAR._t, CAR._z4, CAR._z4);
+    GAME.init = () => { setCamera(3.3, 1.25, -3.6, 0.1, 0.62, 0, 0.5); R.cube.pos.set([0, 0.9, 0]); FR.data[FO.car + 3] = c; FR.data.set(D.ao, FO.car2 + 1); };
     window.__car = CAR;
   }
 });
+
+// ---- 30_car_e_extras.js
+// Carros extras (tecla Y troca): cada um redefine o perfil, a planta, as janelas e as luzes da mesma pele paramétrica do Uno
+// (30_car_a_shape.js consulta CK) e monta carroceria e peças com os construtores genéricos daqui.
+// CARDEFS[0] é o Uno, com os números originais; para acrescentar um carro basta outra definição nesta lista
+// (mais a física em VCARS, 40_vehicle.js, e a cor em mat_car.wgsl).
+const CARDEFS = [{
+  id: 'uno', nome: 'Fiat Uno Mille EP 1996', tracao: 'tração dianteira', ck: null, cs: Object.assign({}, CS),
+  hubs: [[1.181, 0.281, -0.67], [1.181, 0.281, 0.67], [-1.181, 0.281, -0.65], [-1.181, 0.281, 0.65]],
+  paint: [0.168, 0.275, 0.425], dx: 0, dy: 0, rs: 0, ao: [1.72, 0.07, 1.181], rearCam: -2.0,
+}];
+
+// ---------- genéricos de forma (usados quando CK != null) ----------
+// janelas laterais: q = 0 porta, 1 vidro traseiro lateral
+function carWinG(P, q) {
+  const W = CK.win, x = P[0], y = P[1];
+  const bottom = (carBeltN(x) + 0.014) - y, top = y - (carRoofEdgeY(x) - 0.04);
+  let front, rear;
+  if (!q) { front = W.ao - ((x - CW.apx) * CW.anx + (y - CW.apy) * CW.any); rear = (W.dr - 0.04 * (y - 0.95)) - x; }
+  else { front = x - (W.qf - 0.04 * (y - 0.95)); rear = Math.max(W.co - ((x - CW.cpx) * CW.cnx + (y - CW.cpy) * CW.cny), (W.qr + W.qs * (y - 0.95)) - x); }
+  return csmax(csmax(bottom, top, 0.03), csmax(front, rear, 0.03), 0.035);
+}
+// para-brisa (r = 0) e vidro traseiro (r = 1)
+function carGlassG(P, r) {
+  const G = CK.glass, st = carStation(P[0]);
+  if (!r) { const xe = carXe(P); return P[0] < G.wsMin ? 1 : csmax(csmax(xe - G.ws1, G.ws0 - xe, 0.03), P[2] - (st.zE - 0.047), 0.06); }
+  return P[0] > G.rwMax ? 1 : csmax(csmax(G.ry0 - P[1], P[1] - G.ry1, 0.03), P[2] - (st.zE - 0.072), 0.06);
+}
+function carSeamDoorG() {
+  const S = CK.seam, p = [[S.xf, 0.215], [S.xf, S.yb], [S.xf - 0.018, S.yb + 0.03]];
+  for (let x = S.xf - 0.08; x >= S.xr + 0.008; x -= 0.045) p.push([x, carStation(x).yE - (x > S.xa ? 0.03 : 0.024)]);
+  p.push([S.xr, carStation(S.xr).yE - 0.024]); p.push([S.xr, 0.215]); p.push([S.xf, 0.215]);
+  return p;
+}
+// capô e tampa do porta-malas (distância assinada, negativa dentro)
+function carSeamTopG(P) {
+  const S = CK.seam, x = P[0], z = P[2], st = carStation(x);
+  if (x > 0.3) { const xe = carXe(P); return Math.max(z - (st.zE - 0.058), S.h0 - xe, xe - S.h1); }
+  if (x < S.t0 + 0.2) return Math.max(z - (st.zE - 0.07), x - S.t0, S.t1 - x);
+  return 1;
+}
+
+// ---------- Chevrolet Chevette SL 1987 (sedã 2 portas, três volumes, tração traseira) ----------
+const CHV = {
+  yt(x) {
+    const hood = 0.905 - 0.10 * (x - 0.62) + 0.008 * (1 - csq((x - 1.25) / 0.63));
+    const wind = 0.905 - 0.80 * (x - 0.62);
+    const a = x + 0.22, roof = 1.318 - (a > 0 ? 0.20 * a * a : 0.07 * a * a) + (x > 0.1 ? 6 * csq(x - 0.1) : 0);
+    const back = 0.915 + 0.74 * (x + 1.42), deck = 0.915 + 0.04 * (x + 1.42);
+    const tail = 0.89 + 9 * (x + 2.01), fascia = 0.775 - 9 * (x - 1.875);
+    let y = csmax(hood, wind, 0.02);
+    y = csmin(y, roof, 0.035); y = csmin(y, csmax(back, deck, 0.05), 0.06); y = csmin(y, tail, 0.04); y = csmin(y, fascia, 0.04);
+    return y;
+  },
+  // frente e traseira retas em planta: a face desce inteira até a saia
+  bulge(x) { return 0.045 * smooth(-0.2, 0.2, x) * smooth(1.75, 1.35, x) - 0.03 * smooth(-0.45, -0.75, x) * smooth(-1.95, -1.6, x); },
+  crown(x) { return 0.03 * smooth(0.6, 0.9, x) * smooth(1.86, 1.76, x) + 0.035 * smooth(0.15, -0.1, x) * smooth(-0.95, -0.7, x) + 0.015 * smooth(-1.42, -1.55, x) * smooth(-2.0, -1.9, x); },
+  wplan(x) { const t = sat((x - 0.6) / 1.3), t2 = sat((-0.9 - x) / 1.15); return 0.785 - 0.07 * t * t - 0.06 * t2 * t2; },
+  zl(x, y) {
+    let z = CHV.wplan(x);
+    const d = y - 0.60; z -= d < 0 ? 0.042 * csq(d / 0.40) : 0.03 * csq(d / 0.30);
+    if (y < 0.25) z -= 0.03 * csq((0.25 - y) / 0.06);
+    const da = Math.min(Math.hypot(x - CS.AXF, y - CS.ARCH_Y), Math.hypot(x - CS.AXR, y - CS.ARCH_Y)) - CS.ARCH_R;
+    if (da < 0.3) z += 0.004 * Math.exp(-csq((da - 0.01) / 0.1));   // lábio das caixas de roda
+    return z;
+  },
+  belt(x) { return 0.875 + 0.006 * (0.6 - x); },
+  r2(x) {
+    let r = 0.04;
+    r = lerp(r, 0.024, smooth(-0.1, 0.15, x));       // coluna A
+    r = lerp(r, 0.03, smooth(0.55, 0.75, x));        // ombro do para-lama
+    r = lerp(r, 0.045, smooth(1.72, 1.82, x));       // canto dianteiro
+    r = lerp(r, 0.03, smooth(-0.85, -1.0, x));       // coluna C
+    r = lerp(r, 0.035, smooth(-1.38, -1.5, x));      // ombro do porta-malas
+    r = lerp(r, 0.05, smooth(-1.9, -1.98, x));       // canto traseiro
+    return r;
+  },
+  // coluna C larga: o vidro lateral termina numa borda mais em pé (qr, qs) e sobra espaço para a grade de ventilação preta
+  win: { a0: 0.50, a1: 0.22, c0: -1.02, c1: -1.28, re0: -0.86, re1: 0.08, ao: 0.062, dr: -0.42, qf: -0.50, co: 0.1, qr: -0.99, qs: 0.7 },
+  glass: { wsMin: 0, ws0: 0.21, ws1: 0.598, rwMax: -0.75, ry0: 0.955, ry1: 1.235 },
+  seam: { xf: 0.68, xr: -0.44, xa: 0.1, yb: 0.873, h0: 0.69, h1: 1.80, t0: -1.48, t1: -1.97 },
+  hl: [0.40, 0.625, 0.665, 0.052],                               // farol retangular: z0, z1, y do centro, meia altura
+  headlight(P) { return carRRect(P[2] - 0.5125, P[1] - 0.665, 0.1125, 0.052, 0.012); },
+  clZ: 0.632,                                                    // pisca âmbar ao lado do farol, dobrando a quina
+  grille(P) { return carRRect(P[2], P[1] - 0.665, 0.385, 0.045, 0.008); },
+  tl: [0.47, 0.69, 0.60, 0.84],                                  // lanterna alta de três faixas: z0, z1, y0, y1
+  tail(P) { return Math.max(carRRect(P[2] - 0.58, P[1] - 0.72, 0.11, 0.12, 0.012), P[0] - (CS.XR + 0.2)); },
+  // trechos da pele (x da frente para trás) onde ficam os recortes
+  rg: { door: [0.70, -0.46], quarter: [-0.46, -1.5], ws: [0.72, 0.05], rw: [-0.82, -1.5], inner: [0.75, -1.5] },
+  cowl: 0.62, wheel: 1,
+};
+CARDEFS.push({
+  id: 'chevette', nome: 'Chevrolet Chevette SL 1987', tracao: 'tração traseira', ck: CHV,
+  cs: { XF: 1.933, XR: -2.08, YS: 0.19, AXF: 1.1975, AXR: -1.1975, WR: 0.281, TH_S: Math.sin(24 * PI / 180), TH_C: Math.cos(24 * PI / 180), VF: CS.VF, ARCH_R: 0.318, ARCH_Y: 0.295 },
+  hubs: [[1.1975, 0.281, -0.665], [1.1975, 0.281, 0.665], [-1.1975, 0.281, -0.66], [-1.1975, 0.281, 0.66]],
+  paint: [0.46, 0.028, 0.022], dx: -0.052, dy: -0.07, rs: 0.04, ao: [2.06, -0.07, 1.1975], rearCam: -2.4,
+});
+
+// prepara a pele para o carro D (constantes, tabela de comprimento de arco, linhas das colunas, junções)
+function carUse(D) { CK = D.ck; Object.assign(CS, D.cs); carShapeInit(); carWindowsInit(); carSeamInit(); }
+// constrói as malhas do carro i: carroceria (mb), vidros (gl), roda (w) e disco de borrão da roda (wb; só o Uno usa)
+function carBuildCar(i, mb, gl, w, wb) {
+  const D = CARDEFS[i]; carUse(D);
+  if (!D.ck) { carBuildBody(mb, gl); carBuildParts(mb, gl); carBuildWheel(w, wb); }
+  else { carBuildBodyG(mb, gl, D); carBuildPartsG(mb, gl, D); carBuildWheel(w, null, D.ck.wheel); }
+  carUse(CARDEFS[0]);
+}
+
+// ---------- carroceria genérica ----------
+function carBuildBodyG(mb, gl, D) {
+  const K = D.ck, rg = K.rg, xf = CS.XF, xr = CS.XR, hl = K.hl;
+  const seamUV = (u, v, P) => { _cuv[0] = carSeam(P, v); _cuv[1] = v; return _cuv; };
+  const plainUV = (u, v, P) => { _cuv[0] = 1; _cuv[1] = v; return _cuv; };
+  const v0 = mb.nv, i0 = mb.ni, gv0 = gl.nv, gi0 = gl.ni;
+  // pintura: a pele inteira (a saia sob os para-choques é pintada), com os recortes de rodas, vidros, faróis e grade
+  const paintField = (u, v, P) => {
+    let f = 1;
+    if (v < 0.42) f = carArchF(P);
+    else if (v < 0.66) f = Math.min(carWinDoor(P), carWinQuarter(P));
+    if (v > 0.6) { f = Math.min(f, carWindshield(P), carHatchGlass(P)); if (P[0] > xf - 0.28) f = Math.min(f, carHeadlight(P), carGrille(P)); }
+    return -f;
+  };
+  const VS = 64 / 152;
+  mb.mat(CM.PAINT).color(1, 1, 1);
+  mb.patch(carSkinFn(0), 0, 1, 0, VS, { nu: 400, nv: 64, flip: true, uv: seamUV, rim: 0.016, rimMat: m => m.mat(CM.PAINT, 255), field: paintField });
+  mb.mat(CM.PAINT).color(1, 1, 1);
+  mb.patch(carSkinFn(0), 0, 1, VS, 1, { nu: 400, nv: 100, flip: true, uv: seamUV, rim: 0.016, rimMat: m => m.mat(CM.RUBBER).color(0.018, 0.018, 0.02), field: paintField });
+  const band = (fn, a, b) => (u, v, P) => { const f = fn(P, v); return Math.max(f - b, a - f); };
+  // frisos cromados em volta das janelas laterais
+  mb.mat(CM.CHROME, 1).color(0.82, 0.83, 0.85);
+  carSub(mb, 0.002, rg.door[0], rg.door[1], 0.40, 0.64, 0.012, { field: band(carWinDoor, -0.007, 0.003), uv: plainUV });
+  carSub(mb, 0.002, rg.quarter[0], rg.quarter[1], 0.40, 0.64, 0.012, { field: band(carWinQuarter, -0.007, 0.003), uv: plainUV });
+  // borrachas do para-brisa, do vidro traseiro e dos faróis
+  mb.mat(CM.RUBBER).color(0.02, 0.02, 0.02);
+  carSub(mb, 0.0015, rg.ws[0], rg.ws[1], 0.60, 1, 0.012, { field: band(carWindshield, -0.014, 0.004), uv: plainUV });
+  carSub(mb, 0.0015, rg.rw[0], rg.rw[1], 0.60, 1, 0.012, { field: band(carHatchGlass, -0.014, 0.004), uv: plainUV });
+  carSub(mb, 0.0012, xf - 0.004, xf - 0.2, 0.62, 1, 0.006, { field: band(carHeadlight, -0.0035, 0.003), uv: plainUV });
+  // grade de ventilação preta na coluna C (faixa inclinada, paralela à borda traseira do vidro lateral)
+  mb.mat(CM.GRILLE).color(0.03, 0.03, 0.032);
+  carSub(mb, 0.003, -0.7, -1.45, 0.40, 0.64, 0.008, { field: (u, v, P) => { const W = K.win, dc = (W.qr + W.qs * (P[1] - 0.95)) - P[0]; return Math.max(carRRect(dc - 0.1, 0, 0.055, 1, 0.01), carBeltN(P[0]) + 0.075 - P[1], P[1] - 1.14); }, uv: plainUV, rim: 0.003 });
+  // pisca âmbar ao lado do farol, dobrando a quina
+  mb.mat(CM.LENS, 2).color(0.62, 0.3, 0.05);
+  const clX = carTopX(K.clZ, hl[2], false) - 0.04;
+  carSub(mb, 0.002, xf - 0.004, xf - 0.2, 0.25, 0.86, 0.006, { field: (u, v, P) => Math.max(Math.abs(P[1] - hl[2]) - hl[3], v > 0.64 ? K.clZ - P[2] : clX - P[0]), uv: (u, v, P) => { _cuv[0] = P[0] + P[2]; _cuv[1] = P[1]; return _cuv; }, rim: 0.004 });
+  // lanternas traseiras (lente rente à carroceria)
+  const tl = K.tl;
+  mb.mat(CM.LENS, 1).color(0.75, 0.03, 0.02);
+  carSub(mb, 0.0025, xr + 0.2, xr + 0.004, 0.60, 1, 0.007, { field: (u, v, P) => carTailLamp(P, v) - 0.003, uv: (u, v, P) => { _cuv[0] = (P[2] - tl[0]) / (tl[1] - tl[0]); _cuv[1] = (P[1] - tl[2]) / (tl[3] - tl[2]); return _cuv; }, rim: 0.0025 });
+  // maçaneta preta
+  mb.mat(CM.PLASTIC).color(0.03, 0.03, 0.03);
+  carSub(mb, 0.008, K.seam.xr + 0.2, K.seam.xr + 0.02, 0.2, 0.40, 0.005, { field: (u, v, P) => carRRect(P[0] - (K.seam.xr + 0.1), P[1] - (K.seam.yb - 0.075), 0.055, 0.016, 0.006), uv: plainUV, rim: 0.007 });
+  // fundo da grade (palhetas pretas)
+  mb.mat(CM.GRILLE).color(0.012, 0.012, 0.013);
+  carSub(mb, -0.024, xf - 0.004, xf - 0.2, 0.62, 1, 0.012, { field: (u, v, P) => carGrille(P) - 0.016, uv: plainUV });
+  // forro interno (visto pelos vidros): laterais escuras, teto claro
+  const inner = (u, v, P) => -(Math.min(carWinDoor(P), carWinQuarter(P), v > 0.55 ? Math.min(carWindshield(P), carHatchGlass(P)) : 1) - 0.014);
+  mb.mat(CM.INTERIOR).color(0.075, 0.078, 0.085);
+  carSub(mb, -0.03, rg.inner[0], rg.inner[1], 0.03, 0.60, 0.026, { field: inner, uv: plainUV, flip: false });
+  mb.mat(CM.INTERIOR, 1).color(0.2, 0.2, 0.195);
+  carSub(mb, -0.03, rg.inner[0], rg.inner[1], 0.60, 1, 0.026, { field: inner, uv: plainUV, flip: false });
+  // vidros
+  gl.mat(0).color(0.83, 0.915, 0.88);
+  const glz = fn => (u, v, P) => fn(P, v) + 0.008;
+  carSub(gl, -0.005, rg.door[0], rg.door[1], 0.40, 0.64, 0.02, { field: glz(carWinDoor), uv: plainUV });
+  carSub(gl, -0.005, rg.quarter[0], rg.quarter[1], 0.40, 0.64, 0.02, { field: glz(carWinQuarter), uv: plainUV });
+  carSub(gl, -0.005, rg.ws[0], rg.ws[1], 0.60, 1, 0.02, { field: glz(carWindshield), uv: plainUV });
+  carSub(gl, -0.005, rg.rw[0], rg.rw[1], 0.60, 1, 0.02, { field: glz(carHatchGlass), uv: plainUV });
+  gl.mat(1).color(0.93, 0.95, 0.95);
+  carSub(gl, -0.003, xf - 0.004, xf - 0.2, 0.62, 1, 0.01, { field: (u, v, P) => carHeadlight(P) + 0.002, uv: (u, v, P) => { _cuv[0] = P[2]; _cuv[1] = P[1]; return _cuv; } });
+  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
+}
+
+// caminho do para-choque em planta, tirado do contorno da própria carroceria na altura yb: do centro, pela quina, até xEnd na lateral
+function carBumperPath(yb, rear, xEnd, g) {
+  const s = rear ? -1 : 1, zc = carZL(rear ? CS.XR + 0.14 : CS.XF - 0.14, yb), X = z => carTopX(z, yb, rear) + s * g;
+  const xk = X(zc * 0.97), pts = [[X(0), 0], [X(zc * 0.45), zc * 0.45, 0.15], [X(zc * 0.8), zc * 0.8, 0.12], [xk, zc + g, 0.07]];
+  for (const t of [0.4, 1]) { const x = xk + (xEnd - xk) * t; pts.push([x, carZL(x, yb) + g, t < 1 ? 0.06 : 0]); }
+  let sC = 0; for (let i = 0; i < 3; i++) sC += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+  return { path: carPath(pts), sC, x0: pts[0][0] };
+}
+function carDecalQuad(mb, reg, zc, y0, w, h, rear, lift) {
+  const P = (z, y) => [rear ? carTopX(z, y, true) - lift : lift, y, z];
+  const s = rear ? 1 : -1, a = P(zc - s * w / 2, y0), b = P(zc + s * w / 2, y0), c = P(zc + s * w / 2, y0 + h), d = P(zc - s * w / 2, y0 + h);
+  mb.quad(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], d[0], d[1], d[2], reg[0], reg[3], reg[2], reg[1]);
+}
+// ---------- peças genéricas: para-choques pretos com filete, caixas de roda, faróis, retrovisores, interior, limpadores, placas ----------
+function carBuildPartsG(mb, gl, D) {
+  const K = D.ck, xf = CS.XF, xr = CS.XR, hl = K.hl, v0 = mb.nv, i0 = mb.ni, gv0 = gl.nv, gi0 = gl.ni;
+  // para-choques de plástico preto que dão a volta até a caixa de roda, com um filete prateado junto à borda de cima
+  const prof = (yT, yB) => carPath([[-0.03, yT], [0.04, yT - 0.003, 0.006], [0.056, yT - 0.02, 0.012], [0.056, yB + 0.03, 0.014], [0.03, yB + 0.004, 0.008], [-0.03, yB]]);
+  const fil = yT => carPath([[0.04, yT - 0.022], [0.0595, yT - 0.024, 0.002], [0.0595, yT - 0.036, 0.002], [0.04, yT - 0.038]]);
+  const arch = (u, v, P) => -(carArchF(P) - 0.004);
+  const fB = carBumperPath(0.5, false, CS.AXF + 0.3, 0.004), rB = carBumperPath(0.49, true, CS.AXR - 0.3, 0.004);
+  mb.mat(CM.PLASTIC).color(0.02, 0.02, 0.021);
+  carBumper(mb, fB.path, prof(0.565, 0.43), 1, arch, 150, 20, fB.sC, 0.6, 0.565, 0);
+  carBumper(mb, rB.path, prof(0.56, 0.42), -1, arch, 150, 20, rB.sC, 0.6, 0.56, 0);
+  mb.mat(CM.CHROME, 1).color(0.8, 0.81, 0.83);
+  carBumper(mb, fB.path, fil(0.565), 1, arch, 150, 4, fB.sC, 0.6, 0.565, 0);
+  carBumper(mb, rB.path, fil(0.56), -1, arch, 150, 4, rB.sC, 0.6, 0.56, 0);
+  // caixas de roda e fundo
+  mb.mat(CM.UNDER).color(0.006, 0.006, 0.007);
+  for (const ax of [CS.AXF, CS.AXR]) {
+    const R0 = CS.ARCH_R + 0.006, N = 28, zo = carZL(ax, 0.55) - 0.012, zi = 0.33;
+    for (let i = 0; i < N; i++) {
+      const a0 = (-8 + 196 * i / N) * PI / 180, a1 = (-8 + 196 * (i + 1) / N) * PI / 180;
+      const x0 = ax + Math.cos(a0) * R0, y0 = CS.ARCH_Y + Math.sin(a0) * R0, x1 = ax + Math.cos(a1) * R0, y1 = CS.ARCH_Y + Math.sin(a1) * R0;
+      const a = mb.v(x0, y0, zo, -Math.cos(a0), -Math.sin(a0), 0, 0, 0), b = mb.v(x0, y0, zi, -Math.cos(a0), -Math.sin(a0), 0, 0, 1), c = mb.v(x1, y1, zi, -Math.cos(a1), -Math.sin(a1), 0, 1, 1), d = mb.v(x1, y1, zo, -Math.cos(a1), -Math.sin(a1), 0, 1, 0);
+      mb.quadI(a, d, c, b);
+    }
+    mb.quad(ax - 0.33, 0.25, zi, ax + 0.33, 0.25, zi, ax + 0.33, 0.66, zi, ax - 0.33, 0.66, zi);
+  }
+  const xa = CS.AXF - 0.34, xb = CS.AXF + 0.34, xc = CS.AXR + 0.34, xd = CS.AXR - 0.34;
+  mb.quad(xc, 0.2, 0, xa, 0.2, 0, xa, 0.2, 0.705, xc, 0.2, 0.705);
+  mb.quad(xa, 0.2, 0, xb, 0.2, 0, xb, 0.2, 0.5, xa, 0.2, 0.5); mb.quad(xd, 0.2, 0, xc, 0.2, 0, xc, 0.2, 0.5, xd, 0.2, 0.5);
+  mb.quad(xb, 0.27, 0, xf - 0.02, 0.27, 0, xf - 0.02, 0.27, 0.68, xb, 0.27, 0.68); mb.quad(xr + 0.02, 0.27, 0, xd, 0.27, 0, xd, 0.27, 0.68, xr + 0.02, 0.27, 0.68);
+  mb.quad(xb, 0.2, 0.68, xb, 0.2, 0, xb, 0.6, 0, xb, 0.6, 0.68); mb.quad(xd, 0.2, 0, xd, 0.2, 0.68, xd, 0.6, 0.68, xd, 0.6, 0);
+  // farol: cuba prateada atrás da lente + bulbo
+  {
+    const z0 = hl[0] + 0.003, z1 = hl[1] - 0.003, y0 = hl[2] - hl[3] + 0.003, y1 = hl[2] + hl[3] - 0.003, Dp = 0.06;
+    const zc = (z0 + z1) / 2, yc = (y0 + y1) / 2, hz = (z1 - z0) / 2, hy = (y1 - y0) / 2;
+    const dep = (a, b) => 0.006 + Dp * Math.pow(Math.max(0, (1 - a * a * a * a) * (1 - b * b * b * b)), 0.6);
+    mb.mat(CM.REFLECTOR).color(0.9, 0.9, 0.92);
+    mb.patch((u, v, o) => { const z = zc + u * hz, y = yc + v * hy, d = dep(u, v), x = carTopX(z, y, false); o[0] = x - d * 0.97; o[1] = y - d * 0.1; o[2] = z; }, -1, 1, -1, 1, { nu: 22, nv: 12, flip: true, uv: (u, v, P) => { _cuv[0] = u; _cuv[1] = v; return _cuv; } });
+    const xb2 = carTopX(zc, yc, false) - (dep(0, 0) - 0.012) * 0.97, yb2 = yc - (dep(0, 0) - 0.012) * 0.1;
+    mb.push(m4translate(m4(), xb2, yb2, zc)); mb.push(m4rotZ(m4(), -PI / 2 + 0.1));
+    mb.mat(CM.REFLECTOR, 1).color(1, 0.95, 0.8); mb.cyl(0, -0.012, 0, 0.0105, 0.024, 0.0095, 12, false, true);
+    mb.mat(CM.REFLECTOR, 2).color(0.85, 0.85, 0.86); mb.cyl(0, -0.012, 0, 0.016, -0.007, 0.014, 14, false, true);
+    mb.pop(); mb.pop();
+  }
+  // retrovisores externos pretos: carcaça retangular num pé curto, na base da coluna A
+  {
+    const x = K.cowl - 0.14, y = K.belt(x) + 0.075, z = carZL(x, K.belt(x)) + 0.1;
+    mb.mat(CM.PLASTIC).color(0.013, 0.013, 0.014);
+    mb.rbox(x + 0.02, y - 0.02, z - 0.07, 0.07, 0.05, 0.1, 0.015, 3);
+    mb.rbox(x, y, z, 0.07, 0.1, 0.16, 0.022, 4);
+    mb.mat(CM.MIRROR).color(0.62, 0.64, 0.67);
+    mb.quad(x - 0.0355, y - 0.038, z - 0.066, x - 0.0355, y - 0.038, z + 0.066, x - 0.0355, y + 0.038, z + 0.066, x - 0.0355, y + 0.038, z - 0.066);
+  }
+  // interior do Uno, deslocado para a cabine deste carro
+  mb.push(m4translate(m4(), D.dx, D.dy, 0)); carInteriorHalf(mb, D.rs); mb.pop();
+  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
+  // ======================= peças não simétricas =======================
+  carWipers(mb, D.dx, true);
+  mb.push(m4translate(m4(), xr + 1.692, 0, 0)); carExhaust(mb); mb.pop();
+  mb.push(m4translate(m4(), D.dx, D.dy, 0)); carInteriorFull(mb); mb.pop();
+  // emblema dourado no centro da grade
+  { const y = hl[2], x = carTopX(0, y, false); mb.mat(CM.CHROME, 2).color(0.86, 0.66, 0.2); mb.rbox(x + 0.003, y, 0, 0.01, 0.026, 0.07, 0.004, 2); mb.rbox(x + 0.003, y, 0, 0.012, 0.014, 0.12, 0.004, 2); }
+  // placas amarelas (padrão da época) e emblema na traseira
+  mb.mat(CM.DECAL).color(1, 1, 1);
+  carDecalQuad(mb, CATX.chvPlate, 0, 0.655, 0.40, 0.13, true, 0.006);
+  carDecalQuad(mb, CATX.chvPlate, 0, 0.432, 0.40, 0.13, false, fB.x0 + 0.062);
+  mb.mat(CM.DECAL, 1).color(1, 1, 1);
+  carDecalQuad(mb, CATX.chvName, 0.3, 0.812, 0.2, 0.036, true, 0.003);
+}
+// ---------- roda de aço prateada com furos redondos e calotinha central (dentro das transformações de carBuildWheel) ----------
+function carWheelFace(mb, style) {
+  mb.mat(CM.STEEL).color(0.5, 0.51, 0.53);
+  mb.lathe([[0.058, 0.168], [0.046, 0.158], [0.05, 0.135], [0.06, 0.1], [0.064, 0.062]], 48);
+  mb.mat(CM.UNDER).color(0.004, 0.004, 0.005);
+  for (let k = 0; k < 12; k++) { mb.push(m4rotX(m4(), k * TAU / 12)); mb.rbox(0.047, 0.127, 0, 0.012, 0.026, 0.026, 0.0059, 3); mb.pop(); }
+  mb.mat(CM.STEEL).color(0.42, 0.43, 0.45);
+  for (let k = 0; k < 4; k++) { mb.push(m4rotX(m4(), (k + 0.5) * TAU / 4)); mb.rbox(0.066, 0.05, 0, 0.012, 0.016, 0.016, 0.005, 2); mb.pop(); }   // parafusos
+  mb.mat(CM.CHROME, 2).color(0.75, 0.76, 0.78);
+  mb.lathe([[0.064, 0.036], [0.074, 0.03], [0.079, 0.015], [0.08, 0]], 24);                                                    // calotinha
+}
+// ---------- atlas: placa amarela e emblema (metade de baixo do atlas do Uno) ----------
+const CATX = { chvPlate: [0, 0.5, 0.5, 0.832], chvName: [0, 0.871, 0.293, 0.988] };
+function carAtlasExtras(g) {
+  g.fillStyle = '#d7a312'; g.fillRect(0, 256, 512, 170); g.strokeStyle = '#1a1a1a'; g.lineWidth = 6; g.strokeRect(5, 261, 502, 160);
+  g.strokeStyle = '#141414'; carText(g, 'CH-1987', 60, 402, 82, 11, 0);
+  g.fillStyle = '#6b5a1a'; g.beginPath(); g.arc(28, 280, 6, 0, TAU); g.arc(484, 280, 6, 0, TAU); g.fill();
+  g.strokeStyle = '#e4e8ec'; carText(g, 'CHEVETTE', 12, 498, 40, 7, 0.12);
+}
 
 // ---- 31_world.js
 // Cenário: terreno estático em quadtree (fino junto à pista, grosso longe) e a faixa da pista (asfalto, zebras, acostamento).
@@ -6434,7 +6841,9 @@ function vegPlace() {
   const g = 5.6, ng = Math.floor(2 * half / g);
   for (let gz = 0; gz < ng; gz++) for (let gx = 0; gx < ng; gx++) {
     const x = V.x0 + (gx + rnd()) * g, z = V.z0 + (gz + rnd()) * g, r1 = rnd(), r2 = rnd(), r3 = rnd(), r4 = rnd(), r5 = rnd();
-    const dc = Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > half - 30) continue;
+    const dr = Math.hypot(x - TRK.cx, z - TRK.cz); if (dr > half - 30) continue;
+    // no mapa grande a mata densa acompanha a pista (distância ao eixo), e não o centro do circuito
+    let dc = dr; if (TRK.map) { const td = trackFarDist(x, z); dc = td > 1e8 ? 1500 : 330 + td; }
     const far = smooth(600, 1450, dc); if (r1 > lerp(0.92, 0.36, far)) continue;
     const f = forestAt(x, z); if (f < 0.03 || r2 > f * 1.15) continue;
     const pn = vnoise(x * 0.017 + 5.1, z * 0.017 - 2.3), edge = 1 - smooth(0.35, 0.9, f);
@@ -6451,8 +6860,8 @@ function vegPlace() {
   const gb = 3.3, nb = Math.floor(2 * half / gb);
   for (let gz = 0; gz < nb; gz++) for (let gx = 0; gx < nb; gx++) {
     const x = V.x0 + (gx + rnd()) * gb, z = V.z0 + (gz + rnd()) * gb, r1 = rnd(), r2 = rnd(), r3 = rnd();
-    const dc = Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > 780) continue;
     const td = trackFarDist(x, z);
+    const dc = TRK.map ? (td > 1e8 ? 1500 : 330 + td) : Math.hypot(x - TRK.cx, z - TRK.cz); if (dc > 780) continue;
     let p;
     if (td < 60) {
       trackLocate(x, z, -1, loc0); const d = loc0[1], ad = Math.abs(d), bar = trkAt(d < 0 ? TRK.barL : TRK.barR, loc0[2], loc0[3]);
@@ -6753,7 +7162,7 @@ function grassBuild() {
 
 // ---- 40_vehicle.js
 // Física do veículo (sem biblioteca): modelo plano de 4 rodas com transferência de carga, elipse de atrito,
-// tração dianteira, câmbio automático, freio de mão, relevo/inclinação da pista e colisão com barreiras.
+// tração dianteira ou traseira (VP.rwd), câmbio automático, freio de mão, relevo/inclinação da pista e colisão com barreiras.
 // Passo fixo de 1/120 s. Nenhuma alocação durante a simulação.
 const PHYS_DT = 1 / 120;
 const K_W = 1, K_S = 2, K_A = 4, K_D = 8, K_SPACE = 16, K_C = 32, K_R = 64, K_V = 128, K_PAD = 256, K_PADS = 512;
@@ -6765,7 +7174,18 @@ const VP = {
   mu: 1.42, B: 9.5, C: 1.42,
   gears: [3.91, 2.16, 1.48, 1.12, 0.9], final: 4.07, rev: 3.9, eff: 0.9,
   cdA: 0.62, crr: 0.014, brakeF: 0.64, halfW: 0.78, front: 1.92, rear: 1.72,
+  rwd: 0, tq0: 180, tq1: 118, spinLat: 0.42, tc: 0, dynBias: 0,                            // tração (0 dianteira, 1 traseira), curva de torque (base + arco, N·m) e aderência lateral que sobra na roda que patina
 };
+// Um conjunto de parâmetros por carro, na ordem de CARDEFS; vehicleSetCar copia o escolhido para VP. O Uno é o VP original.
+const VCARS = [Object.assign({}, VP),
+  // Chevette: tração traseira, motor um pouco mais forte, 4 marchas, mais peso atrás e freio menos concentrado na frente.
+  // dynBias: a distribuição do freio não é fixa; cada roda freia na proporção da carga vertical que tem naquele instante.
+  // Na freada o peso vai para a frente e a traseira fica leve: a parte do freio nas rodas traseiras cai junto, e elas não
+  // travam antes das dianteiras nem soltam a traseira na entrada da curva. tc: em curva, a força de tração nas rodas traseiras fica limitada a essa fração
+  // da aderência (o pé dosado de quem dirige tração traseira), para sobrar aderência lateral; em linha reta vale tudo.
+  // spinLat maior que o do Uno: a traseira que patina ainda segura um pouco de lado (sai de traseira, mas dá para corrigir)
+  Object.assign({}, VP, { m: 880, Izz: 1300, L: 2.395, a: 1.10, b: 1.295, tw: 1.31, gears: [3.75, 2.16, 1.38, 1.0], final: 3.6, cdA: 0.64, halfW: 0.79, front: 1.98, rear: 2.12, rwd: 1, tq0: 200, tq1: 130, spinLat: 0.6, tc: 0.62, dynBias: 1 }),
+];
 const VEH = {
   x: 0, z: 0, yaw: 0, vx: 0, vy: 0, r: 0,                  // posição do CG no plano, direção, velocidades no corpo (frente, direita), guinada
   steer: 0, rpm: 900, gear: 1, throttle: 0, brake: 0, hand: 0,
@@ -6776,6 +7196,7 @@ const VEH = {
   slip: new Float32Array(4),                                 // intensidade de derrapagem por roda 0..1 (fumaça/marcas)
   wx: new Float32Array(4), wy: new Float32Array(4), wz: new Float32Array(4), wzone: new Uint8Array(4), whint: new Int32Array(4).fill(-1),
   fz: new Float32Array(4), hint: -1, s: 0, d: 0, zone: 0, lapS: 0, lastS: 0, laps: 0, maxOff: 0, offCount: 0, hits: 0, time: 0, steps: 0,
+  fly: 0, air: 0, alt: 0, fvy: 0, fpitch: 0, fgy: 0,          // modo voador (Backspace): ligado, no ar, altura sobre o chão, velocidade vertical, arfagem, chão filtrado
   ctl: new Float32Array(2),                                  // saída para o som: acelerador e freio efetivos do último passo
   // estado anterior (para interpolar a renderização)
   px: 0, pz: 0, pyaw: 0, py: 0, proll: 0, ppitch: 0, pheave: 0, pgPitch: 0, pgRoll: 0, psteer: 0, pspin: new Float32Array(4), psusp: new Float32Array(4),
@@ -6783,9 +7204,14 @@ const VEH = {
 const _vl = new Float64Array(4), _vp = new Float64Array(5);
 // posições locais das rodas (x frente, z direita): FL, FR, RL, RR
 const WLX = [VP.a, VP.a, -VP.b, -VP.b], WLZ = [-VP.tw / 2, VP.tw / 2, -VP.tw / 2, VP.tw / 2];
+function vehicleSetCar(i) {
+  Object.assign(VP, VCARS[i]);
+  WLX[0] = WLX[1] = VP.a; WLX[2] = WLX[3] = -VP.b; WLZ[0] = WLZ[2] = -VP.tw / 2; WLZ[1] = WLZ[3] = VP.tw / 2;
+  if (VEH.gear > VP.gears.length) VEH.gear = VP.gears.length;
+}
 
 function engineTorque(rpm) { // curva de torque (N·m): um Mille bem mais disposto que o de fábrica
-  const x = rpm / 1000; const t = 180 + 118 * Math.sin(clamp((x - 0.6) / 5.4, 0, 1) * PI) - Math.max(0, x - 6.0) * 110;
+  const x = rpm / 1000; const t = VP.tq0 + VP.tq1 * Math.sin(clamp((x - 0.6) / 5.4, 0, 1) * PI) - Math.max(0, x - 6.0) * 110;
   return Math.max(0, t);
 }
 // consulta do chão sem números por argumento/retorno: entrada _gq[0]=x, _gq[1]=z; saída _gq[8]=altura; devolve a zona (inteiro).
@@ -6816,7 +7242,7 @@ function vehicleReset(s, d, heading) {
   const V = VEH; trackPos(s, d, _vp);
   V.x = _vp[0]; V.z = _vp[2]; V.yaw = Math.atan2(_vp[4], _vp[3]) + (heading || 0);
   V.vx = V.vy = V.r = 0; V.steer = 0; V.rpm = 900; V.gear = 1; V.ax = V.ay = 0; V.roll = V.rollV = V.pitch = V.pitchV = V.heave = V.heaveV = 0;
-  V.hint = -1; V.whint.fill(-1); V.omega.fill(0); V.slip.fill(0);
+  V.hint = -1; V.whint.fill(-1); V.omega.fill(0); V.slip.fill(0); V.air = 0; V.alt = 0; V.fvy = 0; V.fpitch = 0;
   _gq[0] = V.x; _gq[1] = V.z; groundQ(-1); V.y = _gq[8]; V.gPitch = 0; V.gRoll = 0; V.lastS = V.s;
   for (let k = 0; k < 6; k++) vehicleGround(1);
   vehicleSavePrev();
@@ -6837,8 +7263,51 @@ function vehicleGround(k) {
   V.y += (gy - V.y) * k; V.gPitch += (gp - V.gPitch) * k; V.gRoll += (gr - V.gRoll) * k;
   _gq[0] = V.x; _gq[1] = V.z; V.zone = groundQ(-1);
 }
+// Modo voador (brincadeira, à moda do código de carros voadores do GTA San Andreas): acima de ~36 km/h, puxar o manche
+// (FLYIN[0] = +1, seta para baixo) tira o carro do chão. No ar o modelo é simples e suave: o acelerador empurra, a arfagem
+// segue o manche com atraso, a velocidade vertical segue a arfagem, a direção vira em guinada com inclinação lateral.
+// Devagar demais ele afunda aos poucos; ao tocar o chão volta a ser carro. Desligado no ar, cai.
+const FLYIN = new Float64Array(1);
+function vehicleFlyStep(keys) {
+  const V = VEH, dt = PHYS_DT;
+  vehicleSavePrev();
+  if (!(keys & K_PAD)) { VIN[0] = (keys & K_W) ? 1 : 0; VIN[1] = (keys & K_S) ? 1 : 0; }
+  if (!(keys & K_PADS)) VIN[2] = ((keys & K_D) ? 1 : 0) - ((keys & K_A) ? 1 : 0);
+  const thr = VIN[0], brk = VIN[1], sIn = VIN[2], el = V.fly ? FLYIN[0] : 0;
+  let v = V.vx; v += (thr * 9 - brk * 8 - 0.0045 * v * v - 0.35) * dt; if (v < 0) v = 0;
+  V.vx = v; V.vy *= 0.96;
+  V.fpitch += (el * 0.34 - V.fpitch) * 2.6 * dt;
+  const sink = v < 15 ? (15 - v) * 0.55 : 0;
+  if (V.fly) V.fvy += (v * Math.sin(V.fpitch) - sink - V.fvy) * 2.4 * dt; else V.fvy -= 9.81 * dt;
+  V.alt += V.fvy * dt; if (V.alt > 150) { V.alt = 150; if (V.fvy > 0) V.fvy = 0; }
+  const kv = v < 12 ? v / 12 : 1;
+  V.r += (sIn * 0.85 * kv - V.r) * 3.5 * dt; V.yaw += V.r * dt;
+  V.steer += (sIn * 0.35 - V.steer) * 6 * dt;
+  V.roll += (-sIn * 0.42 * kv - V.roll) * 2.6 * dt; V.rollV = 0; V.pitch += (0 - V.pitch) * 4 * dt; V.pitchV = 0; V.heave *= 0.95; V.heaveV = 0;
+  const c = Math.cos(V.yaw), s = Math.sin(V.yaw), cp = Math.cos(V.fpitch);
+  V.x += (v * c * cp - V.vy * s) * dt; V.z += (v * s * cp + V.vy * c) * dt;
+  // chão sob o carro (também mantém s, d e a contagem de voltas)
+  _gq[0] = V.x; _gq[1] = V.z; V.zone = groundQ(-1); const gy = _gq[8];
+  V.fgy += (gy - V.fgy) * 0.08;
+  if ((V.alt <= 0 || V.fgy + V.alt <= gy) && V.fvy <= 0) {   // pousou: volta ao modelo de rodas, rodando na velocidade do carro
+    V.alt = 0; V.air = 0; V.fvy = 0; V.fpitch = 0; V.y = gy;
+    for (let i = 0; i < 4; i++) V.omega[i] = v / VP.R;
+    V.ax = 0; V.ay = 0; V.gPitch = 0; V.gRoll = 0; vehicleGround(1);
+  } else {
+    V.y = V.fgy + V.alt; if (V.y < gy) { V.y = gy; V.alt = gy - V.fgy; }   // morro subindo mais depressa que o chão filtrado
+    V.gPitch += (V.fpitch - V.gPitch) * 0.2; V.gRoll *= 0.9;
+    const cy = Math.cos(V.yaw), sy = Math.sin(V.yaw);
+    for (let i = 0; i < 4; i++) { V.wx[i] = V.x + cy * WLX[i] - sy * WLZ[i]; V.wz[i] = V.z + sy * WLX[i] + cy * WLZ[i]; V.wy[i] = V.y; V.wzone[i] = 0; V.slip[i] = 0; V.omega[i] *= 0.995; V.spin[i] += V.omega[i] * dt; }
+  }
+  V.rpm += ((1400 + thr * 3600 + v * 35) - V.rpm) * 0.05;
+  V.ctl[0] = thr; V.ctl[1] = brk;
+  V.time += dt; V.steps++;
+  let ds = V.s - V.lastS; if (ds < -TRK.L / 2) { ds += TRK.L; V.laps++; } else if (ds > TRK.L / 2) { ds -= TRK.L; V.laps--; }
+  V.lapS += ds; V.lastS = V.s;
+}
 function vehicleStep(keys) {
   const V = VEH, P = VP, dt = PHYS_DT, g = 9.81;
+  if (V.air) { vehicleFlyStep(keys); return; }
   vehicleSavePrev();
   // (as teclas também passam por VIN: assim thr, brk e sIn são sempre números de ponto flutuante lidos de um vetor tipado, e o
   // compilador intermediário do V8 não precisa pôr em caixa a mistura de inteiro com fração — os valores são os mesmos 0 e 1)
@@ -6858,21 +7327,21 @@ function vehicleStep(keys) {
     reverse = true; throttle = brk; brake = thr;
     if (thr && V.vx > -0.5) { V.gear = 1; reverse = false; throttle = thr; brake = brk; }
   } else if (brk && !thr && V.vx < 0.6) { V.gear = 0; reverse = true; throttle = brk; brake = 0; }
-  const wheelSpd = (V.omega[0] + V.omega[1]) * 0.5;
+  const dw = P.rwd ? 2 : 0, wheelSpd = (V.omega[dw] + V.omega[dw + 1]) * 0.5;   // rodas motrizes
   let ratio = reverse ? -P.rev * P.final : P.gears[V.gear - 1] * P.final;
   let rpm = Math.abs(wheelSpd * ratio) * 9.5493;
   if (!reverse) {
-    if (rpm > 6250 && V.gear < 5) { V.gear++; }
+    if (rpm > 6250 && V.gear < P.gears.length) { V.gear++; }
     else if (V.gear > 1 && Math.abs(wheelSpd * P.gears[V.gear - 2] * P.final) * 9.5493 < 5350) V.gear--;
     ratio = P.gears[V.gear - 1] * P.final; rpm = Math.abs(wheelSpd * ratio) * 9.5493;
   }
   const rpmE = Math.min(6700, Math.max(900, Math.max(rpm, 1100 + throttle * 1900 * Math.min(1, Math.max(0, 1 - speed / 6)))));   // embreagem patinando na saída
   V.rpm += (rpmE - V.rpm) * 0.25;
-  const ex = rpmE / 1000, ek = (ex - 0.6) / 5.4, eT = 180 + 118 * Math.sin((ek < 0 ? 0 : ek > 1 ? 1 : ek) * PI) - (ex > 6 ? (ex - 6) * 110 : 0);   // = engineTorque(rpmE), embutido
-  let Tdrive = throttle * (eT > 0 ? eT : 0) * ratio * P.eff;                  // torque total nas rodas dianteiras
+  const ex = rpmE / 1000, ek = (ex - 0.6) / 5.4, eT = P.tq0 + P.tq1 * Math.sin((ek < 0 ? 0 : ek > 1 ? 1 : ek) * PI) - (ex > 6 ? (ex - 6) * 110 : 0);   // = engineTorque(rpmE), embutido
+  let Tdrive = throttle * (eT > 0 ? eT : 0) * ratio * P.eff;                  // torque total nas rodas motrizes
   if (rpm > 6500) Tdrive = 0;
   if (reverse && V.vx < -11) Tdrive = 0;
-  Tdrive -= (1 - throttle) * 0.012 * rpmE * Math.sign(wheelSpd) * Math.abs(ratio) * 0.1;   // freio-motor
+  Tdrive -= (1 - throttle) * 0.012 * rpmE * Math.sign(wheelSpd) * Math.abs(ratio) * (P.rwd ? 0.05 : 0.1);   // freio-motor (mais brando na tração traseira: não desestabiliza a entrada de curva)
   // --- carga vertical por roda
   const W = P.m * g, dFx = P.m * V.ax * P.h / P.L, dFy = P.m * V.ay * P.h / P.tw;
   const cosg = Math.cos(V.gPitch);
@@ -6880,26 +7349,28 @@ function vehicleStep(keys) {
   V.fz[2] = Math.max(60, (W * P.a / P.L * cosg + dFx) * 0.5 + dFy * 0.44); V.fz[3] = Math.max(60, (W * P.a / P.L * cosg + dFx) * 0.5 - dFy * 0.44);
   // --- forças dos pneus
   let Fx = 0, Fy = 0, Mz = 0; const cs = Math.cos(V.steer), sn = Math.sin(V.steer);
+  const fzSum = V.fz[0] + V.fz[1] + V.fz[2] + V.fz[3];
   const lw0 = Math.min(1, Math.max(0, (speed - 0.4) / 1.8));
   const lowW = (lw0 * lw0 * (3 - 2 * lw0));
   for (let i = 0; i < 4; i++) {
-    const front = i < 2, zone = V.wzone[i], mu = P.mu * ZMU[zone], cap = mu * V.fz[i];
+    const front = i < 2, driven = (i >= 2) === (P.rwd === 1), zone = V.wzone[i], mu = P.mu * ZMU[zone], cap = mu * V.fz[i];
     // velocidade do ponto de contato no referencial do corpo
     const vxw = V.vx - V.r * WLZ[i], vyw = V.vy + V.r * WLX[i];
     // no referencial da roda
     const vl = front ? vxw * cs + vyw * sn : vxw, vt = front ? -vxw * sn + vyw * cs : vyw;
     // longitudinal: demanda de tração/freio limitada pelo atrito
     let fxd = 0, locked = false, spinning = false;
-    if (front) fxd += Tdrive * 0.5 / P.R;
-    const bdem = brake * P.m * g * 1.25 * (front ? P.brakeF : 1 - P.brakeF) * 0.5;
+    if (driven) fxd += Tdrive * 0.5 / P.R;
+    const bdem = P.dynBias ? brake * P.m * g * 1.25 * V.fz[i] / fzSum : brake * P.m * g * 1.25 * (front ? P.brakeF : 1 - P.brakeF) * 0.5;
     const dirL = Math.abs(vl) > 0.25 ? Math.sign(vl) : (Math.abs(fxd) > 1 ? 0 : Math.sign(vl) * Math.abs(vl) / 0.25);
     fxd -= bdem * dirL;
     if (!front && hand) { fxd = -cap * 0.92 * dirL; locked = Math.abs(vl) > 0.3; }
     fxd -= (P.crr + ZDRAG[zone]) * V.fz[i] * dirL;
+    if (P.tc > 0 && driven && fxd > 0) { const k = Math.min(1, Math.abs(V.ay) / 5), lim = cap * (1 - (1 - P.tc) * k); if (fxd > lim) fxd = lim; }
     let fx = fxd, latCap;
     if (locked) { latCap = cap * 0.34; }
     else if (Math.abs(fxd) > cap * 0.985) {
-      if (front && Math.abs(Tdrive) * 0.5 / P.R > bdem && throttle) { fx = Math.sign(fxd) * cap * 0.9; spinning = true; latCap = cap * 0.42; }   // patina
+      if (driven && Math.abs(Tdrive) * 0.5 / P.R > bdem && throttle) { fx = Math.sign(fxd) * cap * 0.9; spinning = true; latCap = cap * P.spinLat; }   // patina
       else { fx = Math.sign(fxd) * cap * 0.97; latCap = cap * 0.243; }                                                             // ABS
     } else latCap = Math.sqrt(cap * cap - fx * fx);
     // lateral: Pacejka simplificado; em baixa velocidade mistura com amortecimento viscoso (estável parado)
@@ -6948,6 +7419,7 @@ function vehicleStep(keys) {
   V.lapS += ds; V.lastS = V.s;
   let off = 0; for (let i = 0; i < 4; i++) if (V.wzone[i] !== ZONE.ASPHALT && V.wzone[i] !== ZONE.KERB && V.wzone[i] !== ZONE.PIT) off++;
   if (off > 0) V.offCount++;
+  if (V.fly && FLYIN[0] > 0 && V.vx > 10) { V.air = 1; V.alt = 0.02; V.fvy = 0.6; V.fpitch = 0; V.fgy = V.y; V.vy *= 0.5; }   // decola
 }
 // colisão com as barreiras laterais: testa os 4 cantos, empurra de volta e reflete a velocidade
 function vehicleCollide() {
@@ -7135,12 +7607,20 @@ const GS = {
   tvData: new Float32Array(64 * 4), tvN: 0, tvCur: -1, tvAim: new Float32Array(3), tvFov: 0.3, pl: new Float64Array(2),
   v3: new Float32Array(6), fxOn: true, frozen: false, freeCam: false,
   padKeys: 0, lapSeen: 0, lapMax: 0, lapNew: false,
+  lapInv: false,                                                    // a volta em andamento saiu dos limites da pista: não vale como melhor volta
+  eye: new Float64Array([-0.11, 1.165, -0.345]),                   // olho do piloto no carro em uso (câmera 3, atrás do volante)
+  car: 0, ao: new Float32Array([1.72, 0.07, 1.181]), rearCam: new Float64Array([-2.0]),   // carro em uso (índice em CARDEFS) e os números dele usados a cada quadro
 };
+// troca de carro: física, malhas e os números da sombra de contato e da câmera para trás. A posição e a velocidade continuam.
+function gameSetCar(i) {
+  const D = CARDEFS[i]; GS.car = i; vehicleSetCar(i); if (typeof CAR !== 'undefined') CAR.select(i);
+  GS.ao.set(D.ao); GS.rearCam[0] = D.rearCam; GS.cut = true; GS.eye[0] = -0.11 + D.dx; GS.eye[1] = 1.165 + D.dy;
+}
 // Cronômetro: LAP[0] instante (s de simulação) em que a volta atual começou, [1] última volta, [2] melhor volta, [3] 1 = cronômetro correndo
 const LAP = new Float64Array(4);
 // Controle (Gamepad API): PADV[0] gatilho direito, [1] gatilho esquerdo, [2] analógico esquerdo já com zona morta e curva. Preenchido por padPoll.
 const PADV = new Float64Array(3);
-const KEYMAP = { KeyW: K_W, ArrowUp: K_W, KeyS: K_S, ArrowDown: K_S, KeyA: K_A, ArrowLeft: K_A, KeyD: K_D, ArrowRight: K_D, Space: K_SPACE, KeyC: K_C, KeyR: K_R, KeyV: K_V };
+const KEYMAP = { KeyW: K_W, KeyS: K_S, KeyA: K_A, ArrowLeft: K_A, KeyD: K_D, ArrowRight: K_D, Space: K_SPACE, KeyC: K_C, KeyR: K_R, KeyV: K_V };
 function onKeyDown(e) { const k = KEYMAP[e.code]; if (k) { GS.held |= k; e.preventDefault(); } }
 function onKeyUp(e) { const k = KEYMAP[e.code]; if (k) { GS.held &= ~k; e.preventDefault(); } }
 function onBlur() { GS.held = 0; }
@@ -7174,11 +7654,12 @@ const carObj = () => (typeof CAR !== 'undefined' ? CAR : CARP);
 
 function gameInit() {
   addEventListener('keydown', onKeyDown); addEventListener('keyup', onKeyUp); addEventListener('blur', onBlur);
-  if (typeof REPLAY_B64 !== 'undefined') {
+  if (typeof REPLAY_B64 !== 'undefined' && !TRK.map) {   // a volta roteirizada é do circuito original
     const bin = atob(REPLAY_B64); let n = 0; for (let i = 1; i < bin.length; i += 2) n += bin.charCodeAt(i);
     GS.replay = new Uint8Array(n); let o = 0; for (let i = 0; i < bin.length; i += 2) { const k = bin.charCodeAt(i), c = bin.charCodeAt(i + 1); for (let q = 0; q < c; q++) GS.replay[o++] = k; }
   }
   GS.replayOn = Q.has('replay') && !!GS.replay; GS.ai = Q.has('auto');
+  if (Q.has('car')) gameSetCar(Math.min(CARDEFS.length - 1, +Q.get('car') || 0));
   // câmeras de TV: as torres do cenário (WORLD.tvCams), ou posições calculadas do lado de fora das curvas
   if (typeof WORLD !== 'undefined' && WORLD.tvCams && WORLD.tvCams.length) {
     const q = new Float64Array(5);
@@ -7209,6 +7690,7 @@ function gameWarmup() {
   const fx = GS.fxOn, rp = GS.replayOn; GS.replayOn = false; GS.ai = false; RT[2] = 1 / 120;
   vehicleReset(TRK.L + TRK.startS, TRK.startD, 0);
   for (let i = 0; i < 9000; i++) {
+    if (i === 7200) vehicleSetCar(1);   // o último trecho aquece o ramo de tração traseira
     const ph = (i / 300) | 0, t = i / 120; let k = aiKeys(t);
     if (ph % 7 === 3) k = K_S; else if (ph % 7 === 5) k = K_W | K_D | (i % 60 < 30 ? K_SPACE : 0); else if (ph % 11 === 9) k = K_W | K_A;
     if (i % 1500 === 1499) k |= K_R; if (i % 400 === 399) k |= K_C;
@@ -7229,6 +7711,7 @@ function gameWarmup() {
       cs.focusOn = false; setCamera(x, y, z, x + ux, y + uy, z + uz, 0.9); cascadeSetup(k % 3);
     }
   }
+  vehicleSetCar(GS.car);
   GS.held = 0; GS.padKeys = 0; LAP[2] = 0; GS.fxOn = fx; GS.replayOn = rp; GS.ai = Q.has('auto'); RT[0] = 0; RT[2] = 1 / 60;
 }
 // Aquece a GPU antes do jogo começar: renderiza quadros de vários pontos do circuito nas três câmeras (com fumaça e marcas),
@@ -7252,7 +7735,7 @@ function gameRestart() {
   const V = VEH; V.lapS = 0; V.offCount = 0; V.hits = 0; V.laps = 0; V.time = 0; V.steps = 0; V.spin.fill(0); V.susp.fill(0);
   vehicleReset(TRK.L + TRK.startS, TRK.startD, 0); GS.held = 0; GS.tick60 = 0; GS.acc = 0; GS.sub = 0; GS.keys = GS.prevKeys = 0; GS.cam = +(Q.get('cam') || 0); GS.chaseInit = false; GS.tvCur = -1; GS.cut = true;
   if (typeof fxReset === 'function') fxReset();
-  GS.lapSeen = GS.lapMax = 0; LAP[0] = LAP[1] = LAP[3] = 0;
+  GS.lapSeen = GS.lapMax = 0; LAP[0] = LAP[1] = LAP[3] = 0; GS.lapInv = false;
   GS.alpha = 1; gamePose(); gameCamera();
 }
 // um passo de física; a cada 2 passos (1/60 s) lê as teclas (gravadas, piloto automático ou teclado)
@@ -7265,15 +7748,23 @@ function gameStep() {
     GS.prevKeys = GS.keys; GS.keys = k; GS.tick60++;
     const edge = k & ~GS.prevKeys;
     if ((k ^ GS.prevKeys) & K_V) { GS.cut = true; GS.chaseInit = false; }   // olhar para trás é um corte de câmera
-    if (edge & K_C) { GS.cam = (GS.cam + 1) % 3; GS.cut = true; GS.chaseInit = false; GS.tvCur = -1; }
+    if (edge & K_C) { GS.cam = (GS.cam + 1) % 4; GS.cut = true; GS.chaseInit = false; GS.tvCur = -1; }
     if (edge & K_R) { // devolve o carro à pista: no eixo, alinhado, parado
       const s = VEH.s; vehicleReset(s, clamp(VEH.d, -2, 2), 0); GS.cut = true; GS.chaseInit = false;
     }
   }
   GS.sub++;
   vehicleStep(GS.keys);
+  if (LAP[3] === 1 && !GS.lapInv && !VEH.air) trackLimits();
   if (VEH.laps !== GS.lapSeen) lapCross();
   if (GS.fxOn && typeof fxStep === 'function') fxStep();
+}
+// Limites de pista: a volta é invalidada quando as quatro rodas ficam fora (asfalto, zebra e faixa dos boxes valem como pista)
+// ou quando alguma roda pega a caixa de brita. Passar por cima da zebra não invalida.
+function trackLimits() {
+  const z = VEH.wzone; let off = 0;
+  for (let i = 0; i < 4; i++) { const q = z[i]; if (q === ZONE.GRAVEL) { GS.lapInv = true; return; } if (q !== ZONE.ASPHALT && q !== ZONE.KERB && q !== ZONE.PIT) off++; }
+  if (off === 4) GS.lapInv = true;
 }
 // junta o controle ao teclado: gatilhos e alavanca valem como entrada analógica (VIN); A/D do teclado têm prioridade na direção
 function padMerge(k) {
@@ -7286,10 +7777,11 @@ function padMerge(k) {
 // voltar não fecha volta. O instante do cruzamento é interpolado dentro do passo de física.
 function lapCross() {
   const V = VEH;
+  if (V.fly && V.laps > GS.lapMax) { LAP[3] = 0; GS.lapMax = V.laps; }
   if (V.laps > GS.lapMax) {
     const st = V.vx * PHYS_DT, fr = st > 1e-6 ? V.s / st : 0, t = V.time - (fr < 0 ? 0 : fr > 1 ? 1 : fr) * PHYS_DT;
-    if (LAP[3] === 1) { const lt = t - LAP[0]; LAP[1] = lt; if (!GS.replayOn && (LAP[2] === 0 || lt < LAP[2])) { LAP[2] = lt; GS.lapNew = true; } }
-    LAP[0] = t; LAP[3] = 1; GS.lapMax = V.laps;
+    if (LAP[3] === 1) { const lt = t - LAP[0]; LAP[1] = lt; if (!GS.replayOn && !GS.lapInv && (LAP[2] === 0 || lt < LAP[2])) { LAP[2] = lt; GS.lapNew = true; } }
+    LAP[0] = t; LAP[3] = 1; GS.lapMax = V.laps; GS.lapInv = false;
   }
   GS.lapSeen = V.laps;
 }
@@ -7337,7 +7829,8 @@ function gamePose() {
   // rodas: a matriz anterior passa a ser a roda atual levada pelo deslocamento rígido da carroceria (anterior × atual⁻¹).
   // Assim o desfoque de movimento não espalha o pneu pelo asfalto por causa do giro; a rotação é mostrada pelo material.
   if (C.slotWheel[0] !== C.slotBody) { const D2 = GS.tmp2; m4mul(D2, objPrev(C.slotBody), T); for (let i = 0; i < 4; i++) m4mul(objPrev(C.slotWheel[i]), D2, objModel(C.slotWheel[i])); }
-  const f = FR.data, o = FO.car; f[o] = bp[0]; f[o + 1] = GS.speed; f[o + 2] = GS.steer; f[o + 3] = 0;
+  const f = FR.data, o = FO.car; f[o] = bp[0]; f[o + 1] = GS.speed; f[o + 2] = GS.steer; f[o + 3] = GS.car;
+  f[FO.car2 + 1] = GS.ao[0]; f[FO.car2 + 2] = GS.ao[1]; f[FO.car2 + 3] = GS.ao[2];   // sombra de contato: meio comprimento, centro e meio entre-eixos
   f[FO.car2] = (GS.tick60 < 30 && GS.speed < 0.5) ? 1 : 0;   // luzes de largada: acesas só enquanto o carro espera no grid
   R.cube.pos[0] = B[4] * 1.15 + B[12]; R.cube.pos[1] = B[5] * 1.15 + B[13]; R.cube.pos[2] = B[6] * 1.15 + B[14];
 }
@@ -7367,9 +7860,16 @@ function gameCamera() {
     q[3] = B[0] * 6.5 + B[4] * 0.52 + B[12]; q[4] = B[1] * 6.5 + B[5] * 0.52 + B[13]; q[5] = B[2] * 6.5 + B[6] * 0.52 + B[14];
     q[6] = 1.0; q[7] = -(V.gRoll + V.roll) * 0.8;
     if (lb < 0) {   // para trás: do alto da tampa traseira, sem o carro no quadro
-      q[0] = B[0] * -2.0 + B[4] * 1.05 + B[12]; q[1] = B[1] * -2.0 + B[5] * 1.05 + B[13]; q[2] = B[2] * -2.0 + B[6] * 1.05 + B[14];
+      const rc = GS.rearCam[0];
+      q[0] = B[0] * rc + B[4] * 1.05 + B[12]; q[1] = B[1] * rc + B[5] * 1.05 + B[13]; q[2] = B[2] * rc + B[6] * 1.05 + B[14];
       q[3] = B[0] * -9 + B[4] * 0.6 + B[12]; q[4] = B[1] * -9 + B[5] * 0.6 + B[13]; q[5] = B[2] * -9 + B[6] * 0.6 + B[14]; q[7] = -q[7];
     }
+  } else if (GS.cam === 3) {
+    // piloto: no lugar dos olhos, atrás do volante, presa à carroceria (o volante gira e o painel aparece embaixo, como nos simuladores)
+    const B = GS.body, E = GS.eye, ex = E[0], ey = E[1], ez = E[2], tx = ex + 8 * lb, ty = ey - 0.55;
+    q[0] = B[0] * ex + B[4] * ey + B[8] * ez + B[12]; q[1] = B[1] * ex + B[5] * ey + B[9] * ez + B[13]; q[2] = B[2] * ex + B[6] * ey + B[10] * ez + B[14];
+    q[3] = B[0] * tx + B[4] * ty + B[8] * ez + B[12]; q[4] = B[1] * tx + B[5] * ty + B[9] * ez + B[13]; q[5] = B[2] * tx + B[6] * ty + B[10] * ez + B[14];
+    q[6] = 1.12; q[7] = -(V.gRoll + V.roll) * 0.8 * lb;
   } else {
     // TV: câmera fixa à beira da pista mais próxima à frente do carro, com lente longa
     let best = GS.tvCur, bd = 1e9; const n = GS.tvN, TV = GS.tvData;
@@ -7889,10 +8389,13 @@ function hudDraw() {
     g.stroke();
     const hr = L[6]; g.drawImage(H.hub, (L[0] - hr) * 16, (cy - hr) * 16, hr * 32, hr * 32); g.drawImage(H.hub, (L[2] - hr) * 16, (cy - hr) * 16, hr * 32, hr * 32);
   }
-  const cur = V[3], last = V[4], best = V[5];
-  if (cur !== K[4] || last !== K[5] || best !== K[6]) {
+  const cur = V[3], last = V[4], best = V[5], inv = GS.lapInv ? 1 : 0;
+  if (cur !== K[4] || last !== K[5] || best !== K[6] || inv !== H.inv) {
+    H.inv = inv;
     K[4] = cur; K[5] = last; K[6] = best; const t = H.t, B = H.B, y = L[16];
-    t.clearRect(0, 0, L[17], L[18]); t.drawImage(H.bgT, 0, 0); hudTime(t, B, cur, L[10], y); hudTime(t, B, last, L[11], y); hudTime(t, B, best, L[12], y);
+    t.clearRect(0, 0, L[17], L[18]); t.drawImage(H.bgT, 0, 0); hudTime(t, B, cur, L[10], y);
+    if (inv) { t.globalCompositeOperation = 'multiply'; t.fillStyle = '#ff3b2a'; t.fillRect(L[10], y, B.w[0] * 5 + B.w[10] + B.w[11], B.h); t.globalCompositeOperation = 'source-over'; }   // volta invalidada: tempo em vermelho
+    hudTime(t, B, last, L[11], y); hudTime(t, B, best, L[12], y);
   }
 }
 // estatísticas de desempenho (tecla H): média de meio segundo de quadros; RT[3] = intervalo do último quadro (ms)
@@ -7911,15 +8414,17 @@ function hudStats(on) { HUD.stats = on; HUD.cs.style.display = on ? 'block' : 'n
 // poses, teclas de ferramenta e leitura do controle. Nas ferramentas de trabalho/ (captura, poses, teste, medição) nada
 // disto é ligado: sem menu, sem painel, sem som.
 const ST = { INICIO: 0, JOGO: 1, PAUSA: 2, BENCH: 3, FITA: 4, RESULT: 5, POSE: 6 };
-const UI = { st: ST.INICIO, back: ST.JOGO, el: null, tag: null, res: null, b0: null, b1: null, bench: null, benchN: 0, padPrev: 0, padN: 0, pose: -1, stats: false, warm: false };
+const UI = { st: ST.INICIO, back: ST.JOGO, el: null, tag: null, res: null, b0: null, b1: null, bench: null, benchN: 0, padPrev: 0, padN: 0, pose: -1, stats: false, warm: false, car: 0, sub: null, tagT: 0 };
 const $ = id => document.getElementById(id);
 function uiInit() {
   UI.el = $('ui'); UI.tag = $('tag'); UI.res = $('res'); UI.b0 = $('b0'); UI.b1 = $('b1');
-  hudInit(); uiWarmup();
-  try { const b = +localStorage.getItem('uno-melhor'); if (b > 20 && b < 600) LAP[2] = b; } catch (e) { /* sem armazenamento local: a melhor volta vale só nesta sessão */ }
+  hudInit(); mmInit(); uiWarmup();
+  UI.sub = document.querySelector('#ui .sub'); UI.car = GS.car; uiUse(GS.car);
   UI.b0.onclick = () => { if (UI.st === ST.INICIO) { sndStart(); uiSet(ST.JOGO); } else uiResume(); };
-  UI.b1.onclick = () => benchStart();
+  UI.b1.onclick = () => benchStart(); if (TRK.map) UI.b1.style.visibility = 'hidden';
   addEventListener('keydown', uiKey);
+  addEventListener('keyup', e => { if ((e.code === 'ArrowDown' && FLYIN[0] > 0) || (e.code === 'ArrowUp' && FLYIN[0] < 0)) FLYIN[0] = 0; });
+  addEventListener('blur', () => { FLYIN[0] = 0; });
   document.addEventListener('visibilitychange', () => { if (document.hidden && (UI.st === ST.JOGO || UI.st === ST.FITA || UI.st === ST.BENCH)) uiPause(); });
   addEventListener('gamepadconnected', padCount); addEventListener('gamepaddisconnected', padCount);
   const h = $('hint'); if (h) h.style.display = 'none';
@@ -7934,35 +8439,96 @@ function uiSet(st) {
   UI.res.style.display = st === ST.RESULT ? 'block' : 'none';
   UI.tag.textContent = st === ST.BENCH ? 'Benchmark: volta roteirizada de 60 s · Esc cancela' : st === ST.FITA ? 'Volta roteirizada · R assume o volante · Esc menu' : st === ST.POSE ? 'Pose ' + (UI.pose + 1) + ' · ' + POSES[UI.pose].nome + ' · 1 a 6 trocam · Esc volta a dirigir' : '';
   UI.tag.style.display = UI.tag.textContent ? 'block' : 'none';
-  hudShow(st === ST.JOGO || st === ST.FITA || (st === ST.PAUSA && UI.back !== ST.BENCH));
+  hudShow(st === ST.JOGO || st === ST.FITA || (st === ST.PAUSA && UI.back !== ST.BENCH)); MM.el.style.display = HUD.vis ? 'block' : 'none';
   sndRun(st === ST.JOGO || st === ST.FITA || st === ST.BENCH);
   if (menu) UI.b0.focus(); else UI.b0.blur();
   _lastT = 0;
+}
+// melhor volta guardada por carro (a do Uno fica na chave antiga)
+function uiBestKey(i) { return (i ? 'uno-melhor-' + CARDEFS[i].id : 'uno-melhor') + (TRK.map ? '-mapa' + TRK.map : ''); }
+// tecla P: troca de mapa. O cenário inteiro é gerado na carga, então a página recarrega com o outro mapa e o mesmo carro.
+function uiMapNext() { setMsg('carregando ' + MAPS[(TRK.map + 1) % MAPS.length] + '…'); location.search = '?mapa=' + (TRK.map + 1) % MAPS.length + (UI.car ? '&car=' + UI.car : ''); }
+// põe o carro i em uso, com a melhor volta dele (sem armazenamento local, ela vale só enquanto o carro não é trocado)
+function uiUse(i) {
+  if (GS.replayOn || UI.st === ST.INICIO) { VEH.fly = 0; FLYIN[0] = 0; }
+  gameSetCar(i); LAP[2] = 0;
+  try { const b = +localStorage.getItem(uiBestKey(i)); if (b > 20 && b < 600) LAP[2] = b; } catch (e) { /* sem armazenamento local */ }
+  if (UI.sub) UI.sub.textContent = CARDEFS[i].nome + ' · ' + MAPS[TRK.map];
+}
+// tecla Y / LB: passa para o carro seguinte, no lugar e na velocidade em que o atual está; a volta em andamento não conta
+function uiCarNext() {
+  UI.car = (GS.car + 1) % CARDEFS.length; uiUse(UI.car); LAP[1] = 0; LAP[3] = 0;
+  const D = CARDEFS[UI.car]; UI.tag.textContent = D.nome + ' · ' + D.tracao; UI.tag.style.display = 'block';
+  clearTimeout(UI.tagT); UI.tagT = setTimeout(() => { if (UI.st === ST.JOGO) { UI.tag.textContent = ''; UI.tag.style.display = 'none'; } }, 2800);
+}
+// ↑ ↓: ajuste da física em tempo real, só nos carros extras (o Uno fica como foi gravado na volta roteirizada).
+// Ajusta a tração em curva (VP.tc, fração da aderência traseira que o motor pode usar em curva; 1 = sem limite).
+// Vale na hora e fica até recarregar a página. O freio não tem ajuste: a distribuição segue a carga de cada roda.
+function uiTune(d) {
+  const i = GS.car, P = VCARS[i]; let t;
+  if (!i) t = 'Ajuste de física só no Chevette · Y troca de carro';
+  else {
+    P.tc = VP.tc = Math.round(Math.min(1, Math.max(0.3, P.tc + d * 0.02)) * 100) / 100;
+    t = 'Tração em curva ' + P.tc.toFixed(2).replace('.', ',') + (P.tc >= 1 ? ' (sem limite)' : '') + '  ·  ↑ ↓ ajustam';
+  }
+  UI.tag.textContent = t; UI.tag.style.display = 'block';
+  clearTimeout(UI.tagT); UI.tagT = setTimeout(() => { if (UI.st === ST.JOGO) { UI.tag.textContent = ''; UI.tag.style.display = 'none'; } }, 3500);
+}
+// Backspace: modo voador. A volta em andamento deixa de contar; no ar as setas ↑ ↓ são o manche (e não ajustam a tração).
+function uiFly(on) {
+  VEH.fly = on ? 1 : 0; FLYIN[0] = 0; if (on) LAP[3] = 0;
+  uiTag(on ? 'Carro voador ligado · acelere e segure ↓ para subir · ↑ desce · Backspace desliga' : 'Carro voador desligado', 4500);
+}
+function uiTag(t, ms) {
+  UI.tag.textContent = t; UI.tag.style.display = 'block';
+  clearTimeout(UI.tagT); UI.tagT = setTimeout(() => { if (UI.st === ST.JOGO) { UI.tag.textContent = ''; UI.tag.style.display = 'none'; } }, ms);
+}
+// Minimapa (canto inferior esquerdo): o traçado desenhado uma vez num canvas e um ponto, movido por CSS, na posição do carro.
+const MM = { el: null, dot: null, sc: 1, ox: 0, oz: 0, px: -1, py: -1 };
+function mmInit() {
+  const c = $('mmc'), S = Math.round(Math.min(innerHeight * 0.27, 280)), dpr = 2, pad = 12; MM.el = $('mm'); MM.dot = $('mmd');
+  const w = TRK.bx1 - TRK.bx0, h = TRK.bz1 - TRK.bz0, sc = MM.sc = (S - 2 * pad) / Math.max(w, h), W = Math.ceil(w * sc + 2 * pad), H = Math.ceil(h * sc + 2 * pad);
+  c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'; MM.ox = pad - TRK.bx0 * sc; MM.oz = pad - TRK.bz0 * sc;
+  const g = c.getContext('2d'); g.scale(dpr, dpr); g.lineJoin = g.lineCap = 'round';
+  const path = () => { g.beginPath(); for (let i = 0; i < TRK.N; i += 3) { const x = TRK.x[i] * sc + MM.ox, y = TRK.z[i] * sc + MM.oz; if (i) g.lineTo(x, y); else g.moveTo(x, y); } g.closePath(); };
+  path(); g.strokeStyle = 'rgba(9,11,14,.72)'; g.lineWidth = 7; g.stroke(); path(); g.strokeStyle = '#fff'; g.lineWidth = 2.4; g.stroke();
+  const x0 = TRK.x[0] * sc + MM.ox, y0 = TRK.z[0] * sc + MM.oz, nx = -TRK.tz[0] * 6, ny = TRK.tx[0] * 6;   // linha de largada
+  g.beginPath(); g.moveTo(x0 - nx, y0 - ny); g.lineTo(x0 + nx, y0 + ny); g.strokeStyle = '#ff5a36'; g.lineWidth = 3; g.stroke();
+}
+function mmFrame() {
+  const x = Math.round(VEH.x * MM.sc + MM.ox), y = Math.round(VEH.z * MM.sc + MM.oz);
+  if (x !== MM.px || y !== MM.py) { MM.px = x; MM.py = y; MM.dot.style.transform = 'translate(' + x + 'px,' + y + 'px)'; }
 }
 function uiPause() { if (UI.st === ST.BENCH) benchStop(); UI.back = UI.st === ST.FITA ? ST.FITA : ST.JOGO; uiSet(ST.PAUSA); }
 function uiResume() {
   if (UI.st === ST.RESULT || UI.st === ST.POSE) uiDrive(); else if (UI.st === ST.PAUSA) uiSet(UI.back);
 }
 // volta ao volante: carro no grid, câmeras e simulação soltas
-function uiDrive() { GS.frozen = false; GS.freeCam = false; GS.replayOn = false; gameRestart(); uiSet(ST.JOGO); }
-function uiReplay() { if (!GS.replay) return; GS.frozen = false; GS.freeCam = false; GS.replayOn = true; gameRestart(); uiSet(ST.FITA); }
-function uiPose(i) { if (UI.st === ST.BENCH) benchStop(); UI.pose = i; poseApply(i); GS.replayOn = false; uiSet(ST.POSE); }
+function uiDrive() { GS.frozen = false; GS.freeCam = false; GS.replayOn = false; uiUse(UI.car); gameRestart(); uiSet(ST.JOGO); }
+function uiReplay() { if (!GS.replay) return; GS.frozen = false; GS.freeCam = false; GS.replayOn = true; uiUse(0); gameRestart(); uiSet(ST.FITA); }
+function uiPose(i) { if (UI.st === ST.BENCH) benchStop(); UI.pose = i; VEH.fly = 0; FLYIN[0] = 0; uiUse(POSES[i].tipo === 'volta' ? 0 : UI.car); poseApply(i); GS.replayOn = false; uiSet(ST.POSE); }
 function uiKey(e) {
+  if ((e.code === 'ArrowUp' || e.code === 'ArrowDown') && UI.st === ST.JOGO && VEH.fly) { FLYIN[0] = e.code === 'ArrowDown' ? 1 : -1; e.preventDefault(); return; }   // voando: ↓ sobe, ↑ desce
+  if (e.code === 'Backspace' && UI.st === ST.JOGO && !e.repeat) { uiFly(!VEH.fly); e.preventDefault(); return; }
+  if ((e.code === 'ArrowUp' || e.code === 'ArrowDown') && UI.st === ST.JOGO && !e.ctrlKey && !e.metaKey && !e.altKey) { uiTune(e.code === 'ArrowUp' ? 1 : -1); e.preventDefault(); return; }
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   const c = e.code, st = UI.st;
   if (c === 'KeyM') { sndMute(!SND.mute); return; }
   if (c === 'KeyH') { UI.stats = !UI.stats; hudStats(UI.stats); if (st !== ST.BENCH) perfAttach(UI.stats, 12); return; }
   if (st === ST.INICIO) return;                                   // na tela de início só o botão começa o jogo (e o som)
+  if (c === 'KeyP') { uiMapNext(); return; }
+  if (TRK.map && (c === 'KeyB' || c === 'KeyF' || c.startsWith('Digit'))) { if (st === ST.JOGO) uiTag('Benchmark, volta roteirizada e poses só no circuito Serra da Mata · P troca de mapa', 3500); return; }
   if (c === 'Escape') { if (st === ST.JOGO || st === ST.FITA || st === ST.BENCH) uiPause(); else uiResume(); e.preventDefault(); }
   else if (c === 'KeyB') benchStart();
   else if (c === 'KeyF') uiReplay();
   else if (c === 'KeyR' && st === ST.FITA) uiDrive();
+  else if (c === 'KeyY' && st === ST.JOGO) uiCarNext();
   else if (c.length === 6 && c.startsWith('Digit') && c[5] >= '1' && c[5] <= '6') uiPose(+c[5] - 1);
 }
 // ---- benchmark: a volta roteirizada de 60 s em tempo real, sem painel, medindo tempo de quadro e (se houver) tempo de GPU
 function benchStart() {
   if (!GS.replay || UI.st === ST.INICIO) return;
-  GS.frozen = false; GS.freeCam = false; GS.replayOn = true; gameRestart(); UI.bench = null; UI.benchN++; UI.res.innerHTML = '<h2>Benchmark · calculando…</h2>';
+  GS.frozen = false; GS.freeCam = false; GS.replayOn = true; uiUse(0); gameRestart(); UI.bench = null; UI.benchN++; UI.res.innerHTML = '<h2>Benchmark · calculando…</h2>';
   perfAttach(true, 1); perfStart(); uiSet(ST.BENCH);
 }
 function benchStop() { PERF.rec = false; perfAttach(UI.stats, 12); GS.replayOn = false; }
@@ -8002,11 +8568,12 @@ function padApply() {
   if (m & 1) k |= K_SPACE; if (m & 8) k |= K_C; if (m & 4) k |= K_R; if (m & 32) k |= K_V;
   GS.padKeys = k;
   const edge = m & ~UI.padPrev; UI.padPrev = m;
-  if (edge & 516) padMenu(edge);
+  if (edge & 532) padMenu(edge);
 }
-// botões de menu do controle, na borda: Start abre/fecha o menu; X assume o volante durante a volta roteirizada
+// botões de menu do controle, na borda: Start abre/fecha o menu; X assume o volante durante a volta roteirizada; LB troca de carro
 function padMenu(edge) {
   if (UI.warm) return;
+  if (edge & 16) { if (UI.st === ST.JOGO) uiCarNext(); return; }
   if (edge & 512) { if (UI.st === ST.JOGO || UI.st === ST.FITA || UI.st === ST.BENCH) uiPause(); else if (UI.st !== ST.INICIO) uiResume(); }
   else if (UI.st === ST.FITA) uiDrive();
 }
@@ -8035,9 +8602,9 @@ function uiAfter() {
   const st = UI.st;
   if (st === ST.BENCH) { if (GS.tick60 >= 3600) benchEnd(); }
   else {
-    if (st === ST.FITA && GS.tick60 >= GS.replay.length) { GS.replayOn = false; uiSet(ST.JOGO); }
-    if (HUD.vis) hudFrame();
-    if (GS.lapNew) { GS.lapNew = false; try { localStorage.setItem('uno-melhor', LAP[2].toFixed(3)); } catch (e) { /* idem */ } }
+    if (st === ST.FITA && GS.tick60 >= GS.replay.length) { GS.replayOn = false; uiUse(UI.car); uiSet(ST.JOGO); }
+    if (HUD.vis) { hudFrame(); mmFrame(); }
+    if (GS.lapNew) { GS.lapNew = false; try { localStorage.setItem(uiBestKey(GS.car), LAP[2].toFixed(3)); } catch (e) { /* idem */ } }
   }
   if (HUD.stats) hudStatsFrame();
   sndFrame();

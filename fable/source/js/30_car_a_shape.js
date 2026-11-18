@@ -10,11 +10,15 @@ const CS = {
   VF: [0, 0.36, 0.42, 0.60, 0.68, 1],
   ARCH_R: 0.318, ARCH_Y: 0.295,
 };
+// Carro em construção: null = Uno (os números deste arquivo); senão a definição de um carro extra (30_car_e_extras.js),
+// que troca o perfil, a planta, as janelas e as luzes. A pele paramétrica e os recortes são os mesmos.
+let CK = null;
 const csq = x => x * x;
 function csmin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
 function csmax(a, b, k) { return -csmin(-a, -b, k); }
 // perfil superior no plano de borda: capô, para-brisa, teto, vigia, tampa, frente
 function carYT(x) {
+  if (CK) return CK.yt(x);
   const fascia = 0.765 - 4.3 * (x - 1.752);
   const hood = 0.96 - 0.1806 * (x - 0.672) + 0.012 * (1 - csq((x - 1.21) / 0.54));
   const wind = 0.96 - 0.81 * (x - 0.672);
@@ -26,13 +30,13 @@ function carYT(x) {
   return y;
 }
 // abaulamento em planta: o centro fica mais à frente (para-brisa, frente) ou mais atrás (traseira) que as bordas
-function carBulge(x) { return 0.055 * smooth(-0.15, 0.25, x) - 0.036 * smooth(-1.15, -1.42, x); }
-function carCrown(x) { return 0.02 * smooth(0.62, 0.9, x) * smooth(1.8, 1.7, x) + 0.032 * smooth(0.2, -0.1, x) * smooth(-1.5, -1.3, x); }
+function carBulge(x) { if (CK) return CK.bulge(x); return 0.055 * smooth(-0.15, 0.25, x) - 0.036 * smooth(-1.15, -1.42, x); }
+function carCrown(x) { if (CK) return CK.crown(x); return 0.02 * smooth(0.62, 0.9, x) * smooth(1.8, 1.7, x) + 0.032 * smooth(0.2, -0.1, x) * smooth(-1.5, -1.3, x); }
 function carYtop(x, z) {
   const zz = z / 0.72, xi = carBulge(x) * (1 - zz * zz);
   let y = carYT(x - xi) - carCrown(x) * zz * zz;
   // ressalto central do capô (dois vincos que convergem para a frente)
-  if (x > 0.6) {
+  if (!CK && x > 0.6) {
     // (posição medida na foto de frente: ~0,51 m do eixo junto ao para-brisa, ~0,37 m na frente; degrau de 9 mm com aresta viva)
     const zc = 0.515 - 0.145 * sat((x - 0.72) / 1.03);
     y += 0.0095 * (1 - smooth(zc - 0.0065, zc + 0.0065, z)) * smooth(0.77, 0.9, x - xi) * smooth(1.78, 1.70, x - xi);
@@ -40,11 +44,13 @@ function carYtop(x, z) {
   return y;
 }
 function carWPlan(x) {
+  if (CK) return CK.wplan(x);
   const t = sat((x - 0.55) / 1.3), t2 = sat((-0.85 - x) / 0.82);
   return 0.774 - 0.082 * t * t - 0.05 * t2 * t2;
 }
 // lateral inferior: meia largura em função da altura (bojo, faixa rebaixada, lábio das caixas de roda, dobra da soleira)
 function carZL(x, y) {
+  if (CK) return CK.zl(x, y);
   let z = carWPlan(x);
   const d = y - 0.63; z -= d < 0 ? 0.03 * csq(d / 0.43) : 0.022 * csq(d / 0.30);
   z -= 0.003 * smooth(0.44, 0.53, y) * (1 - smooth(0.585, 0.675, y));   // transições largas: sem brilho ondulado na malha
@@ -53,8 +59,9 @@ function carZL(x, y) {
   if (da < 0.3) z += 0.0024 * Math.exp(-csq((da - 0.01) / 0.1));
   return z;
 }
-function carBeltN(x) { return 0.922 + 0.005 * (0.67 - x); }
+function carBeltN(x) { if (CK) return CK.belt(x); return 0.922 + 0.005 * (0.67 - x); }
 function carR2(x) {
+  if (CK) return CK.r2(x);
   // raio do canto superior: ombro do capô, coluna A, teto, coluna C, canto traseiro, canto dianteiro
   let r = 0.045;
   r = lerp(r, 0.024, smooth(-0.05, 0.2, x));       // coluna A
@@ -123,6 +130,7 @@ function carSkin(x, v, off, out) {
 // tabela u <-> x por comprimento de arco do perfil (u = 0 na frente, 1 atrás)
 const CAR_UT = { n: 800, x: null, s: null, L: 0 };
 function carShapeInit() {
+  for (let i = 0; i < 8; i++) _stCache[i].x = NaN;   // o cache de estações vale para um carro só
   const n = CAR_UT.n, xs = CAR_UT.x = new Float64Array(n + 1), ss = CAR_UT.s = new Float64Array(n + 1);
   let px = CS.XF, py = carYT(px), acc = 0;
   for (let i = 0; i <= n; i++) {
@@ -150,15 +158,17 @@ function carArchF(P) {
 const CW = { apx: 0, apy: 0, anx: 0, any: 0, cpx: 0, cpy: 0, cnx: 0, cny: 0, roofA: 0, roofB: 0, roofC: 0 };
 function carWindowsInit() {
   // linha da coluna A: pelos cantos superiores da parede em duas estações do para-brisa
-  const a = carStation(0.60), ax = 0.60, ay = a.yE, b = carStation(0.20), bx = 0.20, by = b.yE;
+  const W = CK ? CK.win : null, ax = W ? W.a0 : 0.60, bx = W ? W.a1 : 0.20, cx = W ? W.c0 : -1.40, dx = W ? W.c1 : -1.54;
+  const a = carStation(ax), ay = a.yE, b = carStation(bx), by = b.yE;
   let nx = -(by - ay), ny = (bx - ax); let l = Math.hypot(nx, ny); nx /= l; ny /= l; if (ny > 0) { nx = -nx; ny = -ny; }   // normal apontando para baixo/trás (dentro da janela)
   CW.apx = ax; CW.apy = ay; CW.anx = nx; CW.any = ny;
-  const c = carStation(-1.40), cx = -1.40, cy = c.yE, d = carStation(-1.54), dx = -1.54, dy = d.yE;
+  const c = carStation(cx), cy = c.yE, d = carStation(dx), dy = d.yE;
   nx = -(dy - cy); ny = (dx - cx); l = Math.hypot(nx, ny); nx /= l; ny /= l; if (nx < 0) { nx = -nx; ny = -ny; }             // normal apontando para a frente
   CW.cpx = cx; CW.cpy = cy; CW.cnx = nx; CW.cny = ny;
 }
-function carRoofEdgeY(x) { return carStation(clamp(x, -1.33, 0.1)).yE; }
+function carRoofEdgeY(x) { if (CK) return carStation(clamp(x, CK.win.re0, CK.win.re1)).yE; return carStation(clamp(x, -1.33, 0.1)).yE; }
 function carWinDoor(P) {
+  if (CK) return carWinG(P, 0);
   const x = P[0], y = P[1];
   const bottom = (carBeltN(x) + 0.014) - y;
   const top = y - (carRoofEdgeY(x) - 0.04);
@@ -167,6 +177,7 @@ function carWinDoor(P) {
   return csmax(csmax(bottom, top, 0.03), csmax(front, rear, 0.03), 0.035);
 }
 function carWinQuarter(P) {
+  if (CK) return carWinG(P, 1);
   const x = P[0], y = P[1];
   const bottom = (carBeltN(x) + 0.014) - y;
   const top = y - (carRoofEdgeY(x) - 0.04);
@@ -177,28 +188,32 @@ function carWinQuarter(P) {
 // para-brisa: sobre a superfície do topo, em coordenadas (x deslocado pelo abaulamento, z)
 function carXe(P) { const zz = P[2] / 0.72; return P[0] - carBulge(P[0]) * (1 - zz * zz); }
 function carWindshield(P) {
+  if (CK) return carGlassG(P, 0);
   const xe = carXe(P), st = carStation(P[0]);
   const lo = xe - 0.648, hi = 0.162 - xe, side = P[2] - (st.zE - 0.047);
   return P[0] < 0 ? 1 : csmax(csmax(lo, hi, 0.03), side, 0.06);
 }
 function carHatchGlass(P) {
+  if (CK) return carGlassG(P, 1);
   const st = carStation(P[0]), y = P[1];
   const lo = 1.0 - y, hi = y - 1.352, side = P[2] - (st.zE - 0.072);
   return P[0] > -1.2 ? 1 : csmax(csmax(lo, hi, 0.03), side, 0.06);
 }
 function carRRect(a, b, ha, hb, r) { const qa = Math.abs(a) - ha + r, qb = Math.abs(b) - hb + r; return Math.hypot(Math.max(qa, 0), Math.max(qb, 0)) + Math.min(Math.max(qa, qb), 0) - r; }
 const CL = { hlZ0: 0.378, hlZ1: 0.607, lY: 0.693, lH: 0.062, clZ: 0.6135, clX: 1.735 };   // farol + pisca âmbar FRONTAL ao lado (z > clZ), que dobra a quina
-function carHeadlight(P) { return carRRect(P[2] - (CL.hlZ0 + CL.hlZ1) / 2, P[1] - CL.lY, (CL.hlZ1 - CL.hlZ0) / 2, CL.lH, 0.012); }
+function carHeadlight(P) { if (CK) return CK.headlight(P); return carRRect(P[2] - (CL.hlZ0 + CL.hlZ1) / 2, P[1] - CL.lY, (CL.hlZ1 - CL.hlZ0) / 2, CL.lH, 0.012); }
 function carCornerLamp(P, v) {
   const g = v > 0.64 ? CL.clZ - P[2] : CL.clX - P[0];
   return Math.max(Math.abs(P[1] - CL.lY) - CL.lH, g);
 }
 function carGrille(P) {
+  if (CK) return CK.grille(P);
   const z = P[2], y = P[1];
   return carRRect(z, y - 0.694, 0.356, 0.0475, 0.008);   // abertura única; a barra central na cor do carro é uma peça à parte
 }
 const CT = { z0: 0.497, y0: 0.584, y1: 0.822 };   // lanterna quase quadrada, colada ao para-choque, contornando a quina
 function carTailLamp(P, v) {
+  if (CK) return CK.tail(P);
   // face traseira (x atrás de -1,572) + dobra de ~4 cm pela lateral
   // face traseira + dobra de largura constante (~5,5 cm) pela lateral, paralela à aresta traseira inclinada
   return Math.max(carRRect(0, P[1] - (CT.y0 + CT.y1) / 2, 1, (CT.y1 - CT.y0) / 2, 0.012), CT.z0 - P[2], P[0] - (-1.585 + (P[1] - 0.93) / 6.2 + 0.055));
@@ -206,6 +221,7 @@ function carTailLamp(P, v) {
 // ---------- distância às linhas de junção (portas, capô, tampa) — vai em uv.x e vira linha escura no shader ----------
 const CSEAM = { door: null };
 function carSeamInit() {
+  if (CK) { CSEAM.door = carSeamDoorG(); return; }
   const p = [[0.74, 0.215], [0.74, 0.92], [0.722, 0.95]];
   for (let x = 0.66; x >= -0.41; x -= 0.045) p.push([x, carStation(x).yE - (x > 0.1 ? 0.03 : 0.024)]);
   p.push([-0.418, carStation(-0.418).yE - 0.024]); p.push([-0.418, 0.215]); p.push([0.74, 0.215]);
@@ -216,7 +232,8 @@ function carSegDist(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, 
 // (interpola certo entre vértices; o shader desenha a linha onde |d| ≈ 0)
 function carSeam(P, v) {
   const x = P[0], y = P[1], z = P[2]; let d = 1;
-  if (v < 0.66 && x > -0.7 && x < 1.0) {
+  const S = CK ? CK.seam : null;
+  if (v < 0.66 && x > (S ? S.xr - 0.28 : -0.7) && x < (S ? S.xf + 0.26 : 1.0)) {
     const p = CSEAM.door; let m = 1e9, inside = false;
     for (let i = 0; i < p.length - 1; i++) {
       const a = p[i], b = p[i + 1]; m = Math.min(m, carSegDist(x, y, a[0], a[1], b[0], b[1]));
@@ -224,6 +241,7 @@ function carSeam(P, v) {
     }
     d = Math.min(d, inside ? -m : m);
   }
+  if (S) return v > 0.6 ? Math.min(d, carSeamTopG(P)) : d;
   if (v > 0.6) {
     const xe = carXe(P), st = carStation(x);
     if (xe > 0.5) d = Math.min(d, Math.max(z - (st.zE - 0.058), 0.745 - xe, xe - 1.742));     // capô

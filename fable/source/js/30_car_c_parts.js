@@ -21,6 +21,7 @@ function carPath(pts) {
 // x da superfície do topo (frente ou traseira) em (z, y)
 function carTopX(z, y, rear) {
   let a = rear ? -1.76 : 1.6, b = rear ? -1.35 : 1.95;
+  if (CK) { a = rear ? CS.XR - 0.07 : CS.XF - 0.28; b = rear ? CS.XR + 0.34 : CS.XF + 0.08; }
   for (let i = 0; i < 40; i++) { const m = (a + b) / 2, f = carYtop(m, z) - y; if ((f > 0) === !rear) a = m; else b = m; }
   return (a + b) / 2;
 }
@@ -115,7 +116,38 @@ function carBuildParts(mb, gl) {
   mb.pop(); mb.pop();
   mb.mat(CM.PLASTIC).color(0.013, 0.013, 0.014);
   mb.rbox(0.596, 0.994, 0.742, 0.13, 0.085, 0.02, 0.008, 2);
-  // ================= interior (metade direita; espelhado) =================
+  carInteriorHalf(mb);
+  // ================= rack de teto (pés) =================
+  mb.mat(CM.STEEL).color(0.03, 0.03, 0.032);
+  for (const xb of [CRK.x0, CRK.x1]) {
+    const st = carStation(xb);
+    mb.rbox(xb, st.yE + 0.045, st.zE - 0.035, 0.075, 0.07, 0.06, 0.012, 2);
+    mb.push(m4translate(m4(), xb, st.yE - 0.012, st.zE + 0.012)); mb.push(m4rotX(m4(), 0.34)); mb.box(0, 0, 0, 0.06, 0.07, 0.006); mb.pop(); mb.pop();
+  }
+  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
+  // ======================= peças não simétricas =======================
+  // barras do rack + escada + cintas
+  mb.mat(CM.STEEL).color(0.035, 0.035, 0.038);
+  for (const xb of [CRK.x0, CRK.x1]) mb.rbox(xb, CRK.barY, 0, 0.036, 0.028, 1.2, 0.006, 2);
+  carLadder(mb);
+  // limpadores
+  carWipers(mb);
+  carExhaust(mb);
+  carInteriorFull(mb);
+  // emblema dianteiro: cinco barras cromadas inclinadas sobrepostas ao centro da grade (ocupam a altura das duas fendas)
+  {
+    const y = 0.694, x = carTopX(0, y, false), xu = carTopX(0, y + 0.02, false), sl = (xu - x) / 0.02, l = Math.hypot(1, sl);
+    const B = m4basis(m4(), 0, 0, -1, sl / l, 1 / l, 0, 1 / l, -sl / l, 0, x + 0.002, y, 0);
+    mb.mat(CM.CHROME, 2).color(0.93, 0.93, 0.95); mb.push(B);
+    const sh = m4(); sh[4] = 0.3;
+    mb.push(sh); for (let i = 0; i < 5; i++) mb.rbox((i - 2) * 0.0165, 0, 0.004, 0.0072, 0.09, 0.008, 0.002, 2); mb.pop(); mb.pop();
+  }
+  // placas e emblemas traseiros (decalques do atlas)
+  carDecals(mb);
+}
+// interior, metade direita (o chamador espelha): assoalho, painel, bancos e tampão
+// rs: recuo extra do banco traseiro e do tampão (carros de cabine mais curta)
+function carInteriorHalf(mb, rs) {
   mb.mat(CM.INTERIOR).color(0.05, 0.05, 0.055);
   mb.quad(-0.86, 0.235, 0.72, 0.85, 0.235, 0.72, 0.85, 0.235, 0, -0.86, 0.235, 0);
   mb.quad(-1.33, 0.235, 0.5, -0.86, 0.235, 0.5, -0.86, 0.235, 0, -1.33, 0.235, 0);   // ao lado das rodas traseiras o carpete é estreito (o plano inteiro atravessava a calota: risco fino horizontal)
@@ -142,30 +174,23 @@ function carBuildParts(mb, gl) {
   mb.mat(CM.STEEL).color(0.3, 0.3, 0.3); mb.cyl(0, 0.58, -0.06, 0.006, 0.64, 0.006, 6); mb.cyl(0, 0.58, 0.06, 0.006, 0.64, 0.006, 6);
   mb.pop(); mb.pop();
   // banco traseiro (inteiriço) e tampão
+  if (rs) mb.push(m4translate(m4(), rs, 0, 0));
   mb.mat(CM.INTERIOR, 4).color(0.07, 0.072, 0.08);
   mb.rbox(-0.93, 0.45, 0.31, 0.46, 0.15, 0.62, 0.055, 4);
   mb.push(m4translate(m4(), -1.16, 0.5, 0.31)); mb.push(m4rotZ(m4(), 0.36)); mb.rbox(0, 0.25, 0, 0.12, 0.52, 0.62, 0.05, 4); mb.pop(); mb.pop();
   mb.mat(CM.INTERIOR).color(0.04, 0.04, 0.045); mb.box(-1.40, 0.925, 0.3, 0.28, 0.02, 0.6);
-  // ================= rack de teto (pés) =================
-  mb.mat(CM.STEEL).color(0.03, 0.03, 0.032);
-  for (const xb of [CRK.x0, CRK.x1]) {
-    const st = carStation(xb);
-    mb.rbox(xb, st.yE + 0.045, st.zE - 0.035, 0.075, 0.07, 0.06, 0.012, 2);
-    mb.push(m4translate(m4(), xb, st.yE - 0.012, st.zE + 0.012)); mb.push(m4rotX(m4(), 0.34)); mb.box(0, 0, 0, 0.06, 0.07, 0.006); mb.pop(); mb.pop();
-  }
-  mb.mirror(v0, i0, 2); gl.mirror(gv0, gi0, 2);
-  // ======================= peças não simétricas =======================
-  // barras do rack + escada + cintas
-  mb.mat(CM.STEEL).color(0.035, 0.035, 0.038);
-  for (const xb of [CRK.x0, CRK.x1]) mb.rbox(xb, CRK.barY, 0, 0.036, 0.028, 1.2, 0.006, 2);
-  carLadder(mb);
-  // limpadores
-  carWipers(mb);
+  if (rs) mb.pop();
+}
+// escapamento
+function carExhaust(mb) {
   // escapamento: silencioso transversal (aço fosco) + ponteira curta saindo para trás, como na foto
   mb.mat(CM.STEEL, 1).color(0.03, 0.03, 0.032);
   mb.push(m4translate(m4(), -1.43, 0.272, 0.0)); mb.push(m4rotX(m4(), PI / 2)); mb.cyl(0, 0, 0, 0.062, 0.34, 0.062, 20, true, true); mb.pop(); mb.pop();
   mb.mat(CM.STEEL, 1).color(0.035, 0.035, 0.038);
   mb.tube([[-1.44, 0.268, -0.2], [-1.56, 0.26, -0.2], [-1.705, 0.256, -0.2]], 0.019, 10);   // ponteira curta, escura, reta para trás
+}
+// interior, peças sem simetria: coluna do volante, retrovisor interno, câmbio, freio de mão e piloto
+function carInteriorFull(mb) {
   // volante: coluna fixa
   mb.mat(CM.INTERIOR, 3).color(0.04, 0.04, 0.045);
   mb.tube([[0.36, 0.875, -0.36], [0.56, 0.80, -0.36]], 0.03, 10);
@@ -196,16 +221,6 @@ function carBuildParts(mb, gl) {
     mb.mat(CM.GLOSS, 1).color(0.01, 0.011, 0.014);
     mb.rbox(-0.2, 1.178, zd, 0.13, 0.08, 0.233, 0.034, 5);        // viseira: faixa escura que envolve a frente e os lados do casco
   }
-  // emblema dianteiro: cinco barras cromadas inclinadas sobrepostas ao centro da grade (ocupam a altura das duas fendas)
-  {
-    const y = 0.694, x = carTopX(0, y, false), xu = carTopX(0, y + 0.02, false), sl = (xu - x) / 0.02, l = Math.hypot(1, sl);
-    const B = m4basis(m4(), 0, 0, -1, sl / l, 1 / l, 0, 1 / l, -sl / l, 0, x + 0.002, y, 0);
-    mb.mat(CM.CHROME, 2).color(0.93, 0.93, 0.95); mb.push(B);
-    const sh = m4(); sh[4] = 0.3;
-    mb.push(sh); for (let i = 0; i < 5; i++) mb.rbox((i - 2) * 0.0165, 0, 0.004, 0.0072, 0.09, 0.008, 0.002, 2); mb.pop(); mb.pop();
-  }
-  // placas e emblemas traseiros (decalques do atlas)
-  carDecals(mb);
 }
 const CRK = { x0: 0.0, x1: -0.98, barY: 1.47, railZ: 0.205, lx0: -1.98, lx1: 1.22 };
 function carLadder(mb) {
@@ -235,18 +250,20 @@ function carLadder(mb) {
     mb.mat(CM.STRAP).color(0.85, 0.28, 0.02); mb.box(xb, y1 + 0.004, -0.06, 0.036, 0.004, 0.14);
   }
 }
-function carWipers(mb) {
+function carWipers(mb, dx, noRear) {
+  dx = dx || 0;
   const wip = (zp, z1, xe0, lift) => {
     // braço do pivô até o meio da palheta; palheta deitada na base do para-brisa
     const P = (z, xe) => { const zz = z / 0.72, x = xe + carBulge(xe) * (1 - zz * zz); return [x, carYtop(x, z) + 0.016, z]; };
     mb.mat(CM.RUBBER).color(0.015, 0.015, 0.015);
-    const zm = (zp + z1) / 2, a = P(zp, 0.69), m = P(zm + (z1 - zp) * 0.1, xe0 - lift * 0.5);
+    const zm = (zp + z1) / 2, a = P(zp, 0.69 + dx), m = P(zm + (z1 - zp) * 0.1, xe0 - lift * 0.5);
     mb.rbox(a[0], a[1] - 0.004, a[2], 0.03, 0.022, 0.03, 0.008, 2);
     mb.sweep([a, [(a[0] + m[0]) / 2, (a[1] + m[1]) / 2 + 0.006, (a[2] + m[2]) / 2], m], [[-0.006, -0.003], [0.006, -0.003], [0.006, 0.003], [-0.006, 0.003]], { closedProfile: true, hard: true });
     const pts = []; for (let k = 0; k <= 8; k++) { const z = lerp(zp + (z1 - zp) * 0.12, z1, k / 8); pts.push(P(z, lerp(xe0, xe0 - lift, k / 8))); }
     mb.sweep(pts, [[-0.007, -0.008], [0.007, -0.008], [0.004, 0.006], [-0.004, 0.006]], { closedProfile: true, hard: true });
   };
-  wip(0.30, -0.22, 0.655, 0.03); wip(-0.24, -0.66, 0.655, 0.05);
+  wip(0.30, -0.22, 0.655 + dx, 0.03); wip(-0.24, -0.66, 0.655 + dx, 0.05);
+  if (noRear) return;
   // limpador traseiro
   mb.mat(CM.RUBBER).color(0.015, 0.015, 0.015);
   const PR = (z, y) => { const x = carTopX(z, y, true); return [x - 0.016, y + 0.006, z]; };
@@ -287,6 +304,11 @@ const CGLYPH = {
   1: [[[0.12, 0.74], [0.42, 1], [0.42, 0]]], 9: [[[0.7, 0.62], [0.55, 0.46], [0.3, 0.46], [0.1, 0.6], [0.1, 0.85], [0.3, 1], [0.52, 1], [0.7, 0.85], [0.7, 0.3], [0.55, 0.05], [0.3, 0], [0.12, 0.1]]],
   6: [[[0.66, 0.9], [0.5, 1], [0.3, 1], [0.12, 0.82], [0.1, 0.3], [0.25, 0.03], [0.5, 0], [0.68, 0.15], [0.7, 0.4], [0.52, 0.56], [0.3, 0.56], [0.12, 0.42]]],
   '-': [[[0.1, 0.48], [0.5, 0.48]]],
+  C: [[[0.72, 0.82], [0.56, 0.96], [0.4, 1], [0.2, 0.94], [0.04, 0.74], [0, 0.5], [0.04, 0.26], [0.2, 0.06], [0.4, 0], [0.56, 0.04], [0.72, 0.18]]],
+  G: [[[0.72, 0.82], [0.56, 0.96], [0.4, 1], [0.2, 0.94], [0.04, 0.74], [0, 0.5], [0.04, 0.26], [0.2, 0.06], [0.4, 0], [0.56, 0.04], [0.72, 0.18], [0.74, 0.46], [0.44, 0.46]]],
+  H: [[[0, 0], [0, 1]], [[0.76, 0], [0.76, 1]], [[0, 0.52], [0.76, 0.52]]], V: [[[0, 1], [0.4, 0], [0.8, 1]]], L: [[[0, 1], [0, 0], [0.68, 0]]],
+  7: [[[0.08, 1], [0.7, 1], [0.3, 0]]],
+  8: [[[0.4, 0.52], [0.16, 0.62], [0.1, 0.78], [0.2, 0.94], [0.4, 1], [0.6, 0.94], [0.7, 0.78], [0.64, 0.62], [0.4, 0.52], [0.14, 0.4], [0.06, 0.22], [0.16, 0.06], [0.4, 0], [0.64, 0.06], [0.74, 0.22], [0.66, 0.4], [0.4, 0.52]]],
 };
 const CADV = { I: 0.45, i: 0.3, l: 0.3, M: 1.12, '-': 0.6, 1: 0.7, e: 0.82 };
 function carText(g, txt, x, y, h, lw, skew) {
@@ -330,6 +352,7 @@ function carAtlas() {
   }
   const xe = xs + 4;
   g.strokeStyle = '#d0281a'; carText(g, 'EP', xe + 20, 190, 86, 16, 0.24);
+  if (typeof carAtlasExtras === 'function') carAtlasExtras(g);
   const im = g.getImageData(0, 0, W, H);
   const tex = mkTex(W, H, 'rgba8unorm-srgb', TU.RT | TU.TB | TU.CD, { mipLevelCount: 6 });
   G.dev.queue.writeTexture({ texture: tex }, im.data, { bytesPerRow: W * 4 }, [W, H]);
@@ -337,7 +360,7 @@ function carAtlas() {
   return tex;
 }
 // ---------- roda (eixo Z local; face externa em +Z) ----------
-function carBuildWheel(mb, mbBlur) {
+function carBuildWheel(mb, mbBlur, style) {
   mb.push(m4rotY(m4(), -PI / 2));    // X local do torno → +Z
   mb.push(m4translate(m4(), -0.015, 0, 0));   // roda 1,5 cm para dentro: a face externa do pneu fica atrás do lábio do para-lama
   const R = CAR.wheelR, hw = 0.0725, seg = 72;
@@ -356,6 +379,7 @@ function carBuildWheel(mb, mbBlur) {
   mb.mat(CM.STEEL, 1).color(0.035, 0.035, 0.038);
   mb.lathe([[0.058, 0.168], [0.062, 0.171], [0.064, 0.168], [0.062, 0.164], [0.04, 0.16], [0.03, 0.13], [0.03, 0.0]], 40);
   mb.lathe([[-0.02, 0.0], [-0.02, 0.1], [-0.05, 0.158], [-0.06, 0.166], [-0.058, 0.168]], 32);
+  if (style) { carWheelFace(mb, style); mb.pop(); mb.pop(); return; }
   // calota prateada com 14 rasgos radiais
   mb.mat(CM.HUBCAP).color(0.62, 0.63, 0.65);
   const NS = 16, prof = r => { const t = r / 0.166; return 0.0715 - 0.021 * t * t - 0.004 * smooth(0.028, 0.036, r) + 0.004 * smooth(0.06, 0.09, r) - 0.004 * smooth(0.15, 0.166, r); };

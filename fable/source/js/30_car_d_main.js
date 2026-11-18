@@ -9,16 +9,20 @@ const CAR = {
     const fam = CAR.fam = mkFamily('car', { src: 'mat_car', noCube: true });
     CAR.slotBody = objSlot(); for (let i = 0; i < 4; i++) CAR.slotWheel[i] = objSlot(); CAR.slotSteer = objSlot();
     const set = CAR.set = new MeshSet(fam), glass = CAR.glass = new GlassSet();
-    const mb = new MeshBuilder(1 << 17), gl = new MeshBuilder(1 << 14);
-    carBuildBody(mb, gl);
-    if (typeof carBuildParts === 'function') carBuildParts(mb, gl);
-    CAR.tris = mb.ni / 3 + gl.ni / 3;
-    set.add(mb.upload(), CAR.slotBody, 3); glass.add_(gl.upload(), CAR.slotBody);
-    if (typeof carBuildWheel === 'function') {
-      const w = new MeshBuilder(1 << 15), wb = new MeshBuilder(1 << 11); carBuildWheel(w, wb); const wm = w.upload(), wbm = wb.upload(); CAR.tris += 4 * (w.ni + wb.ni) / 3;
-      for (let i = 0; i < 4; i++) { set.add(wm, CAR.slotWheel[i], 3); set.add(wbm, CAR.slotWheel[i], 1); }   // disco de borrão: só no passe principal
+    const sb = new MeshBuilder(1 << 12); carBuildSteer(sb); const steer = sb.upload();
+    // uma malha por carro (CARDEFS); todos usam os mesmos slots, e CAR.select troca as listas de desenho
+    for (let c = 0; c < CARDEFS.length; c++) {
+      const D = CARDEFS[c], mb = new MeshBuilder(1 << 17), gl = new MeshBuilder(1 << 14), w = new MeshBuilder(1 << 15), wb = new MeshBuilder(1 << 11);
+      carBuildCar(c, mb, gl, w, wb);
+      if (!c) CAR.tris = mb.ni / 3 + gl.ni / 3 + 4 * (w.ni + wb.ni) / 3 + sb.ni / 3;
+      set.items = []; glass.items = [];
+      set.add(mb.upload(), CAR.slotBody, 3); glass.add_(gl.upload(), CAR.slotBody);
+      const wm = w.upload(), wbm = wb.ni ? wb.upload() : null;
+      for (let i = 0; i < 4; i++) { set.add(wm, CAR.slotWheel[i], 3); if (wbm) set.add(wbm, CAR.slotWheel[i], 1); }   // disco de borrão: só no passe principal
+      set.add(steer, CAR.slotSteer, 3);
+      D.items = set.items; D.glassItems = glass.items; D.steerMat = m4mul(m4(), m4translate(m4(), D.dx, D.dy, 0), CAR.steerMat);
     }
-    if (typeof carBuildSteer === 'function') { const s = new MeshBuilder(1 << 12); carBuildSteer(s); CAR.tris += s.ni / 3; set.add(s.upload(), CAR.slotSteer, 3); }
+    CAR.select(0);
     const tex = typeof carAtlas === 'function' ? carAtlas() : mkTex(4, 4, 'rgba8unorm-srgb');
     // desenhável: liga o atlas (grupo 3) e não entra no mapa de sombras estático do mundo
     R.drawables.push({ draw(pass, ctx) {
@@ -30,6 +34,9 @@ const CAR = {
     m4ident(CAR._t); CAR.place(CAR._t, CAR._z4, CAR._z4); CAR.place(CAR._t, CAR._z4, CAR._z4);
   },
   _z4: new Float32Array(4),
+  // carro em uso (índice em CARDEFS): troca as malhas desenhadas, os cubos das rodas e a posição do volante
+  cur: 0,
+  select(i) { const D = CARDEFS[i]; CAR.cur = i; CAR.set.items = D.items; CAR.glass.items = D.glassItems; CAR.hubs = D.hubs; CAR.steerMat = D.steerMat; },
   // escreve as matrizes de todos os slots (e guarda as anteriores para os vetores de movimento). Sem alocação.
   // steer (ângulo das rodas dianteiras, + = direita) e ângulo do volante vêm de CAR.inp[0..1]: nenhum número passa por
   // argumento (o V8 poria cada um em caixa na heap a cada chamada).
@@ -60,7 +67,8 @@ BUILD.push(async () => {
   CAR.build();
   if (GAME.mode === 'car') {
     buildTestGround();
-    GAME.init = () => { setCamera(3.3, 1.25, -3.6, 0.1, 0.62, 0, 0.5); R.cube.pos.set([0, 0.9, 0]); };
+    const c = Math.min(CARDEFS.length - 1, +(Q.get('car') || 0)), D = CARDEFS[c]; CAR.select(c); CAR.place(CAR._t, CAR._z4, CAR._z4);
+    GAME.init = () => { setCamera(3.3, 1.25, -3.6, 0.1, 0.62, 0, 0.5); R.cube.pos.set([0, 0.9, 0]); FR.data[FO.car + 3] = c; FR.data.set(D.ao, FO.car2 + 1); };
     window.__car = CAR;
   }
 });

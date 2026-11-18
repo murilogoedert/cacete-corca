@@ -9,7 +9,9 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 #c{position:absolute;inset:0;margin:auto;width:100vw;height:100vh;display:block;object-fit:contain}
 #msg{position:absolute;left:0;right:0;top:45%;text-align:center;letter-spacing:.08em;white-space:pre-wrap}
 #hint{position:absolute;left:14px;bottom:10px;opacity:.75;text-shadow:0 1px 2px #000;transition:opacity 1.5s;pointer-events:none}
-#hg,#ht,#hs,#tag,#ui{display:none;position:absolute;pointer-events:none}
+#hg,#ht,#hs,#tag,#ui,#mm{display:none;position:absolute;pointer-events:none}
+#mm{left:1.6vh;bottom:1.6vh}#mmc{display:block}
+#mmd{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#ff5a36;border:2px solid #fff;box-sizing:border-box}
 #hg{right:1.6vh;bottom:1.6vh}
 #ht{left:50%;top:1.6vh;transform:translateX(-50%)}
 #hs{left:1.6vh;top:1.6vh}
@@ -35,19 +37,23 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <body>
 <canvas id="c"></canvas>
 <div id="msg">carregando…</div>
-<div id="hint">W acelera · S freia/ré · A/D faz curvas · Espaço freio de mão · C câmera · R volta à pista</div>
-<canvas id="hg"></canvas><canvas id="ht"></canvas><canvas id="hs"></canvas><div id="tag"></div>
+<div id="hint">W acelera · S freia/ré · A/D faz curvas · Espaço freio de mão · C câmera · Y carro · R volta à pista</div>
+<canvas id="hg"></canvas><canvas id="ht"></canvas><canvas id="hs"></canvas><div id="tag"></div><div id="mm"><canvas id="mmc"></canvas><div id="mmd"></div></div>
 <div id="ui"><div>
 <h1>Uno com escada</h1>
 <p class="sub">Fiat Uno Mille EP 1996 · circuito</p>
 <div id="res"></div>
 <div class="cols">
 <div><h2>Teclado</h2><table>
-<tr><td>W ou ↑</td><td>acelera</td></tr>
-<tr><td>S ou ↓</td><td>freia e dá ré</td></tr>
+<tr><td>W</td><td>acelera</td></tr>
+<tr><td>S</td><td>freia e dá ré</td></tr>
 <tr><td>A D ou ← →</td><td>faz curvas</td></tr>
 <tr><td>Espaço</td><td>freio de mão</td></tr>
-<tr><td>C</td><td>troca a câmera</td></tr>
+<tr><td>C</td><td>troca a câmera (inclui a do piloto)</td></tr>
+<tr><td>Y</td><td>troca de carro</td></tr>
+<tr><td>P</td><td>troca de mapa (recarrega)</td></tr>
+<tr><td>↑ ↓</td><td>Chevette: tração em curva</td></tr>
+<tr><td>Backspace</td><td>carro voador (↓ sobe, ↑ desce)</td></tr>
 <tr><td>V (segurar)</td><td>olha para trás</td></tr>
 <tr><td>R</td><td>devolve o carro à pista</td></tr>
 <tr><td>Esc</td><td>pausa e abre este menu</td></tr>
@@ -58,6 +64,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <tr><td>Analógico esquerdo</td><td>faz curvas</td></tr>
 <tr><td>A</td><td>freio de mão</td></tr>
 <tr><td>Y</td><td>troca a câmera</td></tr>
+<tr><td>LB</td><td>troca de carro</td></tr>
 <tr><td>RB (segurar)</td><td>olha para trás</td></tr>
 <tr><td>X</td><td>devolve o carro à pista</td></tr>
 <tr><td>Start</td><td>abre este menu</td></tr>
@@ -68,7 +75,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:14px/1.4 -ap
 <tr><td>B</td><td>benchmark (volta roteirizada de 60 s)</td></tr>
 <tr><td>F</td><td>assistir à volta roteirizada</td></tr>
 <tr><td>1 a 6</td><td>poses fixas</td></tr>
-<tr><td colspan="2" style="font-weight:400;color:#ddd;opacity:.75;padding-top:.5em">Câmbio automático · a volta conta<br>ao cruzar a linha de largada</td></tr>
+<tr><td colspan="2" style="font-weight:400;color:#ddd;opacity:.75;padding-top:.5em">Câmbio automático · a volta conta<br>ao cruzar a linha de largada · sair da<br>pista ou pegar a brita invalida a volta</td></tr>
 </table></div>
 </div>
 <div class="bt"><button id="b0">Começar</button><button id="b1">Benchmark</button></div>
